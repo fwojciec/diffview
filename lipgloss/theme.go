@@ -43,6 +43,9 @@ func DarkTheme() *Theme {
 				Foreground: "#f9e2af", // Yellow
 				Background: "#313244", // Dark surface
 			},
+			LineNumber: diffview.ColorPair{
+				Foreground: "#6c7086", // Muted gray
+			},
 		},
 	}
 }
@@ -68,6 +71,9 @@ func LightTheme() *Theme {
 			FileHeader: diffview.ColorPair{
 				Foreground: "#df8e1d", // Yellow
 				Background: "#e6e9ef", // Light surface
+			},
+			LineNumber: diffview.ColorPair{
+				Foreground: "#9ca0b0", // Muted gray for light theme
 			},
 		},
 	}

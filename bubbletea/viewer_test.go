@@ -1440,3 +1440,99 @@ func TestModel_StatusBarUpdatesOnHunkNavigation(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestModel_RendersLineNumbersInGutter(t *testing.T) {
+	t.Parallel()
+
+	// Create diff with known line numbers
+	// Context line at old:10, new:10
+	// Deleted line at old:11, new:-
+	// Added line at old:-, new:11
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 10,
+						OldCount: 2,
+						NewStart: 10,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context", OldLineNum: 10, NewLineNum: 10},
+							{Type: diffview.LineDeleted, Content: "deleted", OldLineNum: 11, NewLineNum: 0},
+							{Type: diffview.LineAdded, Content: "added", OldLineNum: 0, NewLineNum: 11},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Should render line numbers in gutter
+	// Format: "  10    10 │" for context line
+	// Format: "  11     - │" for deleted line (no new line number)
+	// Format: "   -    11 │" for added line (no old line number)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		// Check for context line with both numbers
+		hasContext := bytes.Contains(out, []byte("10")) && bytes.Contains(out, []byte("context"))
+		// Check for deleted line with old number and dash
+		hasDeleted := bytes.Contains(out, []byte("11")) && bytes.Contains(out, []byte("-deleted"))
+		// Check for added line with dash and new number
+		hasAdded := bytes.Contains(out, []byte("+added"))
+		return hasContext && hasDeleted && hasAdded
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_GutterShowsDashForMissingLineNumbers(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context", OldLineNum: 1, NewLineNum: 1},
+							{Type: diffview.LineAdded, Content: "new line", OldLineNum: 0, NewLineNum: 2},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// For added lines, old line number should show as "-"
+	// The gutter should show something like "   -     2 │+new line"
+	// Look for the separator immediately before the + prefix for added lines
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		// The gutter separator should appear right before the + prefix
+		hasGutterBeforeAdded := bytes.Contains(out, []byte("│+new line"))
+		return hasGutterBeforeAdded
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}

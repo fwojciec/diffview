@@ -84,6 +84,9 @@ func defaultStyles() diffview.Styles {
 			Foreground: "#f9e2af", // Yellow
 			Background: "#313244", // Dark surface
 		},
+		LineNumber: diffview.ColorPair{
+			Foreground: "#6c7086", // Muted gray
+		},
 	}
 }
 
@@ -347,6 +350,9 @@ func (m *Model) gotoPrevPosition(positions []int) {
 	}
 }
 
+// gutterWidth is the width of each line number column in the gutter.
+const gutterWidth = 4
+
 // renderDiffWithPositions converts a Diff to a styled string and tracks hunk/file positions.
 // Positions represent the line number where each file/hunk header begins.
 // If renderer is nil, the default lipgloss renderer is used.
@@ -361,6 +367,7 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 	addedStyle := styleFromColorPair(styles.Added, renderer)
 	deletedStyle := styleFromColorPair(styles.Deleted, renderer)
 	contextStyle := styleFromColorPair(styles.Context, renderer)
+	lineNumStyle := styleFromColorPair(styles.LineNumber, renderer)
 
 	var sb strings.Builder
 	lineNum := 0
@@ -391,8 +398,12 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 			sb.WriteString("\n")
 			lineNum++
 
-			// Render lines with prefixes and styling
+			// Render lines with gutter and prefixes
 			for _, line := range hunk.Lines {
+				// Format gutter with line numbers
+				gutter := formatGutter(line.OldLineNum, line.NewLineNum, lineNumStyle)
+				sb.WriteString(gutter)
+
 				prefix := linePrefixFor(line.Type)
 				// Content may include trailing newline from parser; trim it
 				lineContent := strings.TrimSuffix(line.Content, "\n")
@@ -416,6 +427,26 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 		}
 	}
 	return sb.String(), hunkPositions, filePositions
+}
+
+// formatGutter formats the gutter column with old and new line numbers.
+// Format: "  12    14 │" for lines with both numbers
+// Format: "  12     - │" for deleted lines (no new line number)
+// Format: "   -    14 │" for added lines (no old line number)
+func formatGutter(oldLineNum, newLineNum int, style lipgloss.Style) string {
+	oldStr := formatLineNum(oldLineNum)
+	newStr := formatLineNum(newLineNum)
+	gutter := fmt.Sprintf("%s %s │", oldStr, newStr)
+	return style.Render(gutter)
+}
+
+// formatLineNum formats a line number for the gutter.
+// Returns right-aligned number or "-" for zero (missing) line numbers.
+func formatLineNum(num int) string {
+	if num == 0 {
+		return fmt.Sprintf("%*s", gutterWidth, "-")
+	}
+	return fmt.Sprintf("%*d", gutterWidth, num)
 }
 
 // styleFromColorPair creates a lipgloss style from a ColorPair.

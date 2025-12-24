@@ -15,6 +15,7 @@ type Styles struct {
 	Context    ColorPair // Style for context lines (unchanged)
 	HunkHeader ColorPair // Style for hunk headers (@@ ... @@)
 	FileHeader ColorPair // Style for file headers (--- a/... +++ b/...)
+	LineNumber ColorPair // Style for line numbers in the gutter
 }
 
 // Theme provides styles for rendering diffs.
