@@ -3,11 +3,13 @@ package bubbletea
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/fwojciec/diffview"
 )
 
@@ -23,15 +25,42 @@ type Model struct {
 	filePositions []int // line numbers where each file starts
 }
 
-// NewModel creates a new Model with the given diff.
+// NewModel creates a new Model with the given diff and default dark theme.
 func NewModel(diff *diffview.Diff) Model {
-	content, hunkPositions, filePositions := renderDiffWithPositions(diff)
+	return NewModelWithStyles(diff, defaultStyles())
+}
+
+// NewModelWithStyles creates a new Model with the given diff and styles.
+func NewModelWithStyles(diff *diffview.Diff, styles diffview.Styles) Model {
+	content, hunkPositions, filePositions := renderDiffWithPositions(diff, styles)
 	return Model{
 		diff:          diff,
 		content:       content,
 		keymap:        DefaultKeyMap(),
 		hunkPositions: hunkPositions,
 		filePositions: filePositions,
+	}
+}
+
+// defaultStyles returns the default dark theme styles.
+func defaultStyles() diffview.Styles {
+	return diffview.Styles{
+		Added: diffview.ColorPair{
+			Foreground: "#a6e3a1", // Green
+		},
+		Deleted: diffview.ColorPair{
+			Foreground: "#f38ba8", // Red
+		},
+		Context: diffview.ColorPair{
+			Foreground: "#cdd6f4", // Light gray
+		},
+		HunkHeader: diffview.ColorPair{
+			Foreground: "#89b4fa", // Blue
+		},
+		FileHeader: diffview.ColorPair{
+			Foreground: "#f9e2af", // Yellow
+			Background: "#313244", // Dark surface
+		},
 	}
 }
 
@@ -125,57 +154,159 @@ func (m Model) FilePositions() []int {
 	return m.filePositions
 }
 
-// gotoNextPosition scrolls to the next position after the current viewport offset.
+// gotoNextPosition scrolls to the next position.
+// It finds the current position (first one >= currentLine) and navigates to the next.
 func (m *Model) gotoNextPosition(positions []int) {
+	if len(positions) == 0 {
+		return
+	}
 	currentLine := m.viewport.YOffset
-	for _, pos := range positions {
-		if pos > currentLine {
-			m.viewport.SetYOffset(pos)
-			return
+	// Find index of current position (first one >= currentLine)
+	currentIdx := -1
+	for i, pos := range positions {
+		if pos >= currentLine {
+			currentIdx = i
+			break
 		}
 	}
-	// Already at or past last position, stay where we are
+	// If no position >= currentLine, we're past all positions
+	if currentIdx == -1 {
+		return
+	}
+	// Navigate to next position if it exists
+	nextIdx := currentIdx + 1
+	if nextIdx < len(positions) {
+		m.viewport.SetYOffset(positions[nextIdx])
+	}
 }
 
-// gotoPrevPosition scrolls to the previous position before the current viewport offset.
+// gotoPrevPosition scrolls to the previous position.
+// It finds the current position (first one >= currentLine) and navigates to the previous.
 func (m *Model) gotoPrevPosition(positions []int) {
+	if len(positions) == 0 {
+		return
+	}
 	currentLine := m.viewport.YOffset
-	// Find the last position that's before the current line
-	for i := len(positions) - 1; i >= 0; i-- {
-		if positions[i] < currentLine {
-			m.viewport.SetYOffset(positions[i])
-			return
+	// Find index of current position (first one >= currentLine)
+	currentIdx := -1
+	for i, pos := range positions {
+		if pos >= currentLine {
+			currentIdx = i
+			break
 		}
 	}
-	// Already at or before first position, stay where we are
+	// If no position >= currentLine, we're past all positions, go to last
+	if currentIdx == -1 {
+		m.viewport.SetYOffset(positions[len(positions)-1])
+		return
+	}
+	// Navigate to previous position if it exists
+	prevIdx := currentIdx - 1
+	if prevIdx >= 0 {
+		m.viewport.SetYOffset(positions[prevIdx])
+	}
 }
 
-// renderDiffWithPositions converts a Diff to a string and tracks hunk/file positions.
-// Positions represent the line number where each hunk/file's content begins.
-// Note: If file/hunk headers are added in the future, positions should be updated
-// to point to the header lines rather than content lines.
-func renderDiffWithPositions(diff *diffview.Diff) (content string, hunkPositions, filePositions []int) {
+// renderDiffWithPositions converts a Diff to a styled string and tracks hunk/file positions.
+// Positions represent the line number where each file/hunk header begins.
+func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles) (content string, hunkPositions, filePositions []int) {
 	if diff == nil {
 		return "", nil, nil
 	}
 
+	// Create lipgloss styles from color pairs
+	fileHeaderStyle := styleFromColorPair(styles.FileHeader)
+	hunkHeaderStyle := styleFromColorPair(styles.HunkHeader)
+	addedStyle := styleFromColorPair(styles.Added)
+	deletedStyle := styleFromColorPair(styles.Deleted)
+	contextStyle := styleFromColorPair(styles.Context)
+
 	var sb strings.Builder
 	lineNum := 0
 	for _, file := range diff.Files {
-		// Only track file position if file has hunks (skip binary/empty files)
-		if len(file.Hunks) > 0 {
-			filePositions = append(filePositions, lineNum)
+		// Only render file if it has hunks (skip binary/empty files)
+		if len(file.Hunks) == 0 {
+			continue
 		}
+
+		// Track file position at the first header line
+		filePositions = append(filePositions, lineNum)
+
+		// Render file headers with styling
+		sb.WriteString(fileHeaderStyle.Render(fmt.Sprintf("--- %s", file.OldPath)))
+		sb.WriteString("\n")
+		lineNum++
+		sb.WriteString(fileHeaderStyle.Render(fmt.Sprintf("+++ %s", file.NewPath)))
+		sb.WriteString("\n")
+		lineNum++
+
 		for _, hunk := range file.Hunks {
+			// Track hunk position at the header line
 			hunkPositions = append(hunkPositions, lineNum)
+
+			// Render hunk header with styling
+			header := formatHunkHeader(hunk)
+			sb.WriteString(hunkHeaderStyle.Render(header))
+			sb.WriteString("\n")
+			lineNum++
+
+			// Render lines with prefixes and styling
 			for _, line := range hunk.Lines {
-				sb.WriteString(line.Content)
+				prefix := linePrefixFor(line.Type)
+				// Content may include trailing newline from parser; trim it
+				lineContent := strings.TrimSuffix(line.Content, "\n")
+				fullLine := prefix + lineContent
+
+				// Apply appropriate style based on line type
+				var styledLine string
+				switch line.Type {
+				case diffview.LineAdded:
+					styledLine = addedStyle.Render(fullLine)
+				case diffview.LineDeleted:
+					styledLine = deletedStyle.Render(fullLine)
+				default:
+					styledLine = contextStyle.Render(fullLine)
+				}
+				sb.WriteString(styledLine)
 				sb.WriteString("\n")
 				lineNum++
 			}
 		}
 	}
 	return sb.String(), hunkPositions, filePositions
+}
+
+// styleFromColorPair creates a lipgloss style from a ColorPair.
+func styleFromColorPair(cp diffview.ColorPair) lipgloss.Style {
+	style := lipgloss.NewStyle()
+	if cp.Foreground != "" {
+		style = style.Foreground(lipgloss.Color(cp.Foreground))
+	}
+	if cp.Background != "" {
+		style = style.Background(lipgloss.Color(cp.Background))
+	}
+	return style
+}
+
+// formatHunkHeader formats a hunk header in standard diff format.
+func formatHunkHeader(hunk diffview.Hunk) string {
+	header := fmt.Sprintf("@@ -%d,%d +%d,%d @@", hunk.OldStart, hunk.OldCount, hunk.NewStart, hunk.NewCount)
+	if hunk.Section != "" {
+		header += " " + hunk.Section
+	}
+	return header
+}
+
+// linePrefixFor returns the appropriate prefix for a line type.
+func linePrefixFor(lineType diffview.LineType) string {
+	switch lineType {
+	case diffview.LineAdded:
+		return "+"
+	case diffview.LineDeleted:
+		return "-"
+	default:
+		return " "
+	}
 }
 
 // Viewer implements diffview.Viewer using a Bubble Tea TUI.
