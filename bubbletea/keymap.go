@@ -10,6 +10,10 @@ type KeyMap struct {
 	HalfPageDown key.Binding
 	GotoTop      key.Binding
 	GotoBottom   key.Binding
+	NextHunk     key.Binding
+	PrevHunk     key.Binding
+	NextFile     key.Binding
+	PrevFile     key.Binding
 	Quit         key.Binding
 }
 
@@ -39,6 +43,22 @@ func DefaultKeyMap() KeyMap {
 		GotoBottom: key.NewBinding(
 			key.WithKeys("G"),
 			key.WithHelp("G", "go to bottom"),
+		),
+		NextHunk: key.NewBinding(
+			key.WithKeys("n"),
+			key.WithHelp("n", "next hunk"),
+		),
+		PrevHunk: key.NewBinding(
+			key.WithKeys("N"),
+			key.WithHelp("N", "previous hunk"),
+		),
+		NextFile: key.NewBinding(
+			key.WithKeys("]"),
+			key.WithHelp("]", "next file"),
+		),
+		PrevFile: key.NewBinding(
+			key.WithKeys("["),
+			key.WithHelp("[", "previous file"),
 		),
 		Quit: key.NewBinding(
 			key.WithKeys("q", "ctrl+c"),
