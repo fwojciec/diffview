@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20251215102626-e0db08df7383
 	github.com/muesli/termenv v0.16.0
+	github.com/sergi/go-diff v1.4.0
 	github.com/stretchr/testify v1.11.1
 )
 

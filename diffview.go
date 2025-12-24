@@ -60,3 +60,17 @@ const (
 	LineAdded
 	LineDeleted
 )
+
+// Segment represents a portion of text within a line for word-level diffing.
+// Used to highlight specific changed words/characters within modified lines.
+type Segment struct {
+	Text    string // The text content of this segment
+	Changed bool   // True if this segment differs between old/new versions
+}
+
+// WordDiffer computes word-level differences between two strings.
+type WordDiffer interface {
+	// Diff returns segments for both the old and new strings,
+	// marking which portions changed between them.
+	Diff(old, new string) (oldSegs, newSegs []Segment)
+}

@@ -94,6 +94,17 @@ func TestDarkTheme(t *testing.T) {
 		assert.NotEmpty(t, styles.HunkHeader.Foreground)
 		assert.NotEmpty(t, styles.FileHeader.Foreground)
 	})
+
+	t.Run("returns highlight styles for word-level diff", func(t *testing.T) {
+		t.Parallel()
+
+		theme := lipgloss.DarkTheme()
+		styles := theme.Styles()
+
+		// Highlight styles should be brighter than base styles
+		assert.NotEmpty(t, styles.AddedHighlight.Foreground)
+		assert.NotEmpty(t, styles.DeletedHighlight.Foreground)
+	})
 }
 
 func TestLightTheme(t *testing.T) {
@@ -117,5 +128,16 @@ func TestLightTheme(t *testing.T) {
 		assert.NotEmpty(t, styles.Context.Foreground)
 		assert.NotEmpty(t, styles.HunkHeader.Foreground)
 		assert.NotEmpty(t, styles.FileHeader.Foreground)
+	})
+
+	t.Run("returns highlight styles for word-level diff", func(t *testing.T) {
+		t.Parallel()
+
+		theme := lipgloss.LightTheme()
+		styles := theme.Styles()
+
+		// Highlight styles should have appropriate colors for light backgrounds
+		assert.NotEmpty(t, styles.AddedHighlight.Foreground)
+		assert.NotEmpty(t, styles.DeletedHighlight.Foreground)
 	})
 }

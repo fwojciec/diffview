@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fwojciec/diffview"
+	"github.com/fwojciec/diffview/worddiff"
 )
 
 // Model is the Bubble Tea model for viewing diffs.
@@ -86,6 +87,14 @@ func defaultStyles() diffview.Styles {
 		},
 		LineNumber: diffview.ColorPair{
 			Foreground: "#6c7086", // Muted gray
+		},
+		AddedHighlight: diffview.ColorPair{
+			Foreground: "#1e1e2e", // Dark text on bright background
+			Background: "#a6e3a1", // Bright green background
+		},
+		DeletedHighlight: diffview.ColorPair{
+			Foreground: "#1e1e2e", // Dark text on bright background
+			Background: "#f38ba8", // Bright red background
 		},
 	}
 }
@@ -371,6 +380,11 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 	deletedStyle := styleFromColorPair(styles.Deleted, renderer)
 	contextStyle := styleFromColorPair(styles.Context, renderer)
 	lineNumStyle := styleFromColorPair(styles.LineNumber, renderer)
+	addedHighlightStyle := styleFromColorPair(styles.AddedHighlight, renderer)
+	deletedHighlightStyle := styleFromColorPair(styles.DeletedHighlight, renderer)
+
+	// Word differ for inline highlighting
+	differ := worddiff.NewDiffer()
 
 	var sb strings.Builder
 	lineNum := 0
@@ -402,18 +416,48 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 			lineNum++
 
 			// Render lines with gutter and prefixes
-			for _, line := range hunk.Lines {
-				// Format gutter with line numbers
+			// Use index-based loop to detect deleted+added pairs
+			lines := hunk.Lines
+			for i := 0; i < len(lines); i++ {
+				line := lines[i]
+
+				// Check for deleted+added pair for word-level diff
+				if line.Type == diffview.LineDeleted && i+1 < len(lines) && lines[i+1].Type == diffview.LineAdded {
+					deletedLine := line
+					addedLine := lines[i+1]
+
+					// Compute word-level diff
+					deletedContent := strings.TrimSuffix(deletedLine.Content, "\n")
+					addedContent := strings.TrimSuffix(addedLine.Content, "\n")
+					deletedSegs, addedSegs := differ.Diff(deletedContent, addedContent)
+
+					// Render deleted line with word highlighting
+					sb.WriteString(formatGutter(deletedLine.OldLineNum, deletedLine.NewLineNum, gutterWidth, lineNumStyle))
+					styledDeleted := renderLineWithSegments("-", deletedSegs, deletedStyle, deletedHighlightStyle, lineWidth)
+					sb.WriteString(styledDeleted)
+					sb.WriteString("\n")
+					lineNum++
+
+					// Render added line with word highlighting
+					sb.WriteString(formatGutter(addedLine.OldLineNum, addedLine.NewLineNum, gutterWidth, lineNumStyle))
+					styledAdded := renderLineWithSegments("+", addedSegs, addedStyle, addedHighlightStyle, lineWidth)
+					sb.WriteString(styledAdded)
+					sb.WriteString("\n")
+					lineNum++
+
+					// Skip the added line since we already processed it
+					i++
+					continue
+				}
+
+				// Standard line rendering (no word-level diff)
 				gutter := formatGutter(line.OldLineNum, line.NewLineNum, gutterWidth, lineNumStyle)
 				sb.WriteString(gutter)
 
 				prefix := linePrefixFor(line.Type)
-				// Content may include trailing newline from parser; trim it
 				lineContent := strings.TrimSuffix(line.Content, "\n")
 				fullLine := prefix + lineContent
 
-				// Apply appropriate style based on line type
-				// For added/deleted lines, pad to extend background color full width
 				var styledLine string
 				switch line.Type {
 				case diffview.LineAdded:
@@ -430,6 +474,38 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 		}
 	}
 	return sb.String(), hunkPositions, filePositions
+}
+
+// renderLineWithSegments renders a line with word-level highlighting.
+// Segments marked as Changed get the highlight style, others get the base style.
+func renderLineWithSegments(prefix string, segments []diffview.Segment, baseStyle, highlightStyle lipgloss.Style, width int) string {
+	var sb strings.Builder
+
+	// Render prefix with base style
+	sb.WriteString(baseStyle.Render(prefix))
+
+	// Render each segment with appropriate style
+	for _, seg := range segments {
+		if seg.Changed {
+			sb.WriteString(highlightStyle.Render(seg.Text))
+		} else {
+			sb.WriteString(baseStyle.Render(seg.Text))
+		}
+	}
+
+	// Calculate current length and pad if needed
+	// Note: We need to account for prefix length
+	currentLen := len(prefix)
+	for _, seg := range segments {
+		currentLen += len(seg.Text)
+	}
+
+	if currentLen < width {
+		padding := strings.Repeat(" ", width-currentLen)
+		sb.WriteString(baseStyle.Render(padding))
+	}
+
+	return sb.String()
 }
 
 // calculateGutterWidth determines the appropriate gutter width for a diff

@@ -1536,3 +1536,53 @@ func TestModel_GutterShowsDashForMissingLineNumbers(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestModel_HighlightsWordLevelChanges(t *testing.T) {
+	t.Parallel()
+
+	// Create diff with a deleted+added pair where only one word changes
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineDeleted, Content: "hello world", OldLineNum: 1, NewLineNum: 0},
+							{Type: diffview.LineAdded, Content: "hello universe", OldLineNum: 0, NewLineNum: 1},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Use WithRenderer to force true color output
+	m := bubbletea.NewModel(diff, bubbletea.WithRenderer(trueColorRenderer()))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for content to render with word-level highlighting
+	// The changed words "world" and "universe" should have highlight background colors
+	// AddedHighlight background: #a6e3a1 = RGB(166, 227, 161) -> "48;2;166;227;161"
+	// DeletedHighlight background: #f38ba8 = RGB(243, 139, 168) -> "48;2;243;139;168"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		// Check that the content appears
+		hasWorld := bytes.Contains(out, []byte("world"))
+		hasUniverse := bytes.Contains(out, []byte("universe"))
+		// Check for the highlight background colors (true color format: 48;2;R;G;B)
+		hasAddedHighlight := bytes.Contains(out, []byte("48;2;166;227;161"))
+		hasDeletedHighlight := bytes.Contains(out, []byte("48;2;243;139;168"))
+		return hasWorld && hasUniverse && hasAddedHighlight && hasDeletedHighlight
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}

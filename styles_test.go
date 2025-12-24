@@ -60,6 +60,20 @@ func TestStyles(t *testing.T) {
 		assert.Equal(t, "#ffffff", styles.FileHeader.Foreground)
 		assert.Equal(t, "#333333", styles.FileHeader.Background)
 	})
+
+	t.Run("contains highlight styles for word-level changes", func(t *testing.T) {
+		t.Parallel()
+
+		styles := diffview.Styles{
+			AddedHighlight:   diffview.ColorPair{Foreground: "#00ff00", Background: "#003300"},
+			DeletedHighlight: diffview.ColorPair{Foreground: "#ff0000", Background: "#330000"},
+		}
+
+		assert.Equal(t, "#00ff00", styles.AddedHighlight.Foreground)
+		assert.Equal(t, "#003300", styles.AddedHighlight.Background)
+		assert.Equal(t, "#ff0000", styles.DeletedHighlight.Foreground)
+		assert.Equal(t, "#330000", styles.DeletedHighlight.Background)
+	})
 }
 
 func TestTheme(t *testing.T) {

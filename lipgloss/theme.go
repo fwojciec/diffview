@@ -46,6 +46,14 @@ func DarkTheme() *Theme {
 			LineNumber: diffview.ColorPair{
 				Foreground: "#6c7086", // Muted gray
 			},
+			AddedHighlight: diffview.ColorPair{
+				Foreground: "#1e1e2e", // Dark text on bright background
+				Background: "#a6e3a1", // Bright green background
+			},
+			DeletedHighlight: diffview.ColorPair{
+				Foreground: "#1e1e2e", // Dark text on bright background
+				Background: "#f38ba8", // Bright red background
+			},
 		},
 	}
 }
@@ -74,6 +82,14 @@ func LightTheme() *Theme {
 			},
 			LineNumber: diffview.ColorPair{
 				Foreground: "#9ca0b0", // Muted gray for light theme
+			},
+			AddedHighlight: diffview.ColorPair{
+				Foreground: "#ffffff", // White text on dark background
+				Background: "#40a02b", // Bright green background
+			},
+			DeletedHighlight: diffview.ColorPair{
+				Foreground: "#ffffff", // White text on dark background
+				Background: "#d20f39", // Bright red background
 			},
 		},
 	}
