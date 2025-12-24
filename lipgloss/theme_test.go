@@ -91,6 +91,8 @@ func TestDarkTheme(t *testing.T) {
 		assert.NotEmpty(t, styles.Added.Foreground)
 		assert.NotEmpty(t, styles.Deleted.Foreground)
 		assert.NotEmpty(t, styles.Context.Foreground)
+		assert.NotEmpty(t, styles.HunkHeader.Foreground)
+		assert.NotEmpty(t, styles.FileHeader.Foreground)
 	})
 }
 
@@ -113,5 +115,7 @@ func TestLightTheme(t *testing.T) {
 		assert.NotEmpty(t, styles.Added.Foreground)
 		assert.NotEmpty(t, styles.Deleted.Foreground)
 		assert.NotEmpty(t, styles.Context.Foreground)
+		assert.NotEmpty(t, styles.HunkHeader.Foreground)
+		assert.NotEmpty(t, styles.FileHeader.Foreground)
 	})
 }
