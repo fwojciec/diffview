@@ -387,24 +387,17 @@ func computePositions(diff *diffview.Diff) (hunkPositions, filePositions []int) 
 	}
 
 	lineNum := 0
-	fileCount := 0
 	for _, file := range diff.Files {
 		// Skip files without hunks (binary files, etc.)
 		if len(file.Hunks) == 0 {
 			continue
 		}
 
-		// Separator line before file header (except for first file)
-		if fileCount > 0 {
-			lineNum++ // separator
-		}
-		fileCount++
-
-		// Track file position at the first header line
+		// Track file position at the header line
 		filePositions = append(filePositions, lineNum)
 
-		// File headers (--- and +++)
-		lineNum += 2
+		// Enhanced file header (single line: ── file ─── +N -M ──)
+		lineNum++
 
 		for _, hunk := range file.Hunks {
 			// Track hunk position at the header line
@@ -433,7 +426,6 @@ func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.
 
 	// Create lipgloss styles from color pairs
 	fileHeaderStyle := styleFromColorPair(styles.FileHeader, renderer)
-	fileSeparatorStyle := styleFromColorPair(styles.FileSeparator, renderer)
 	hunkHeaderStyle := styleFromColorPair(styles.HunkHeader, renderer)
 	addedStyle := styleFromColorPair(styles.Added, renderer)
 	deletedStyle := styleFromColorPair(styles.Deleted, renderer)
@@ -453,19 +445,29 @@ func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.
 			continue
 		}
 
-		// Render separator before file header (except for first file)
-		if fileCount > 0 {
-			separator := strings.Repeat("─", width)
-			sb.WriteString(fileSeparatorStyle.Render(separator))
-			sb.WriteString("\n")
-		}
-		fileCount++
+		// Render enhanced file header with box-drawing and change statistics
+		// Format: ── filename ─────────────────── +N -M ──
+		added, deleted := file.Stats()
+		stats := fmt.Sprintf("+%d -%d", added, deleted)
 
-		// Render file headers with styling
-		sb.WriteString(fileHeaderStyle.Render(fmt.Sprintf("--- %s", file.OldPath)))
+		// Build header: "── " + path + " " + fill + " " + stats + " ──"
+		prefix := "── "
+		suffix := " ──"
+		path := strings.TrimPrefix(file.NewPath, "b/")
+		middle := prefix + path + " "
+		end := " " + stats + suffix
+
+		// Calculate fill width
+		fillWidth := width - lipgloss.Width(middle) - lipgloss.Width(end)
+		if fillWidth < 3 {
+			fillWidth = 3
+		}
+		fill := strings.Repeat("─", fillWidth)
+
+		header := middle + fill + end
+		sb.WriteString(fileHeaderStyle.Render(header))
 		sb.WriteString("\n")
-		sb.WriteString(fileHeaderStyle.Render(fmt.Sprintf("+++ %s", file.NewPath)))
-		sb.WriteString("\n")
+		fileCount++
 
 		for _, hunk := range file.Hunks {
 			// Render hunk header with styling

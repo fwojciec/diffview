@@ -689,21 +689,20 @@ func TestModel_TracksHunkPositions(t *testing.T) {
 
 	// Positions should be available immediately - no WindowSizeMsg needed!
 	// Hunk positions point to hunk headers (after file headers)
-	// File 1: lines 0-1 are file headers, line 2 is hunk 1 header
-	// Lines 3-4 are hunk 1 content, line 5 is hunk 2 header, line 6 is content
-	// Line 7 is separator (before file 2)
-	// File 2: lines 8-9 are file headers, line 10 is hunk header, line 11 is content
+	// File 1: line 0 is enhanced file header, line 1 is hunk 1 header
+	// Lines 2-3 are hunk 1 content, line 4 is hunk 2 header, line 5 is content
+	// File 2: line 6 is enhanced file header, line 7 is hunk header, line 8 is content
 	hunkPositions := m.HunkPositions()
 	assert.Len(t, hunkPositions, 3, "should track 3 hunks")
-	assert.Equal(t, 2, hunkPositions[0], "first hunk header at line 2")
-	assert.Equal(t, 5, hunkPositions[1], "second hunk header at line 5")
-	assert.Equal(t, 10, hunkPositions[2], "third hunk header at line 10")
+	assert.Equal(t, 1, hunkPositions[0], "first hunk header at line 1")
+	assert.Equal(t, 4, hunkPositions[1], "second hunk header at line 4")
+	assert.Equal(t, 7, hunkPositions[2], "third hunk header at line 7")
 
-	// File positions point to file headers (--- line), after separator
+	// File positions point to enhanced file headers
 	filePositions := m.FilePositions()
 	assert.Len(t, filePositions, 2, "should track 2 files")
 	assert.Equal(t, 0, filePositions[0], "first file header at line 0")
-	assert.Equal(t, 8, filePositions[1], "second file header at line 8")
+	assert.Equal(t, 6, filePositions[1], "second file header at line 6")
 }
 
 func TestModel_SkipsFilesWithNoHunks(t *testing.T) {
@@ -748,20 +747,19 @@ func TestModel_SkipsFilesWithNoHunks(t *testing.T) {
 
 	// Positions should be available immediately - no WindowSizeMsg needed!
 	// Should only track files with hunks (skip binary file)
-	// File 1: lines 0-1 (headers), line 2 (hunk), line 3 (content)
+	// File 1: line 0 (header), line 1 (hunk), line 2 (content)
 	// Binary file is skipped entirely
-	// Line 4 is separator (before file 2)
-	// File 2: lines 5-6 (headers), line 7 (hunk), line 8 (content)
+	// File 2: line 3 (header), line 4 (hunk), line 5 (content)
 	filePositions := m.FilePositions()
 	assert.Len(t, filePositions, 2, "should only track 2 files with hunks")
 	assert.Equal(t, 0, filePositions[0], "first file header at line 0")
-	assert.Equal(t, 5, filePositions[1], "second file header at line 5")
+	assert.Equal(t, 3, filePositions[1], "second file header at line 3")
 
 	// Hunks should still be tracked correctly
 	hunkPositions := m.HunkPositions()
 	assert.Len(t, hunkPositions, 2, "should track 2 hunks")
-	assert.Equal(t, 2, hunkPositions[0], "first hunk at line 2")
-	assert.Equal(t, 7, hunkPositions[1], "second hunk at line 7")
+	assert.Equal(t, 1, hunkPositions[0], "first hunk at line 1")
+	assert.Equal(t, 4, hunkPositions[1], "second hunk at line 4")
 }
 
 func TestViewer_ContextCancellation(t *testing.T) {
@@ -857,10 +855,10 @@ func TestModel_RendersFileHeaders(t *testing.T) {
 		teatest.WithInitialTermSize(80, 24),
 	)
 
-	// Should render file headers (--- and +++)
+	// Should render enhanced file header with box-drawing chars
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("--- a/test.go")) &&
-			bytes.Contains(out, []byte("+++ b/test.go"))
+		return bytes.Contains(out, []byte("── ")) &&
+			bytes.Contains(out, []byte("test.go"))
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -1680,17 +1678,60 @@ func TestModel_NoSeparatorBeforeFirstFile(t *testing.T) {
 		teatest.WithInitialTermSize(80, 24),
 	)
 
-	// Wait for content to render
+	// Wait for content to render with enhanced header
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("only.go"))
+		return bytes.Contains(out, []byte("── ")) &&
+			bytes.Contains(out, []byte("only.go"))
 	})
 
-	// Give a moment for full render, then check no separator
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	finalOut := tm.FinalOutput(t, teatest.WithFinalTimeout(0))
-	out, err := io.ReadAll(finalOut)
-	require.NoError(t, err)
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
 
-	// For a single file, there should be no separator
-	assert.NotContains(t, string(out), "─", "single file should not have separator")
+func TestModel_RendersFileHeaderWithStats(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/handler.go",
+				NewPath:   "b/handler.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 5,
+						NewStart: 1,
+						NewCount: 7,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context"},
+							{Type: diffview.LineDeleted, Content: "old1"},
+							{Type: diffview.LineDeleted, Content: "old2"},
+							{Type: diffview.LineAdded, Content: "new1"},
+							{Type: diffview.LineAdded, Content: "new2"},
+							{Type: diffview.LineAdded, Content: "new3"},
+							{Type: diffview.LineAdded, Content: "new4"},
+							{Type: diffview.LineContext, Content: "context"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// File header should be enhanced with box-drawing and stats: ── file ─── +N -M ──
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		// Should have box-drawing prefix, filename, and stats
+		return bytes.Contains(out, []byte("── ")) &&
+			bytes.Contains(out, []byte("handler.go")) &&
+			bytes.Contains(out, []byte("+4 -2"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
