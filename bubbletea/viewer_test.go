@@ -11,6 +11,7 @@ import (
 	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/bubbletea"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Compile-time check that Viewer implements diffview.Viewer.
@@ -773,9 +774,33 @@ func TestViewer_ContextCancellation(t *testing.T) {
 
 	// Viewer should exit within reasonable time
 	select {
-	case <-done:
-		// Success - viewer exited due to context cancellation
+	case err := <-done:
+		// Verify context cancellation causes exit with context.Canceled error
+		require.ErrorIs(t, err, context.Canceled, "viewer should return context.Canceled on cancellation")
 	case <-time.After(1 * time.Second):
 		t.Fatal("viewer did not exit after context cancellation")
 	}
+}
+
+func TestViewer_ContextAlreadyCancelled(t *testing.T) {
+	t.Parallel()
+
+	// Create an already-cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	diff := &diffview.Diff{}
+
+	var in bytes.Buffer
+	var out bytes.Buffer
+	viewer := bubbletea.NewViewer(
+		bubbletea.WithProgramOptions(
+			tea.WithInput(&in),
+			tea.WithOutput(&out),
+		),
+	)
+
+	// Viewer should exit immediately with already-cancelled context
+	err := viewer.View(ctx, diff)
+	require.ErrorIs(t, err, context.Canceled, "viewer should return context.Canceled for pre-cancelled context")
 }
