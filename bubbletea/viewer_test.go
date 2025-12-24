@@ -1735,3 +1735,51 @@ func TestModel_RendersFileHeaderWithStats(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestModel_RendersGutterSymbols(t *testing.T) {
+	t.Parallel()
+
+	// Create diff with all line types
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 2,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "unchanged", OldLineNum: 1, NewLineNum: 1},
+							{Type: diffview.LineDeleted, Content: "removed", OldLineNum: 2, NewLineNum: 0},
+							{Type: diffview.LineAdded, Content: "added", OldLineNum: 0, NewLineNum: 2},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Gutter should show symbol column with │+│, │-│, │ │ indicators
+	// The gutter symbol appears after line numbers, before content
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		// Context line: gutter ends with "│ │" before the space prefix
+		hasContextSymbol := bytes.Contains(out, []byte("│ │ unchanged"))
+		// Deleted line: gutter ends with "│-│" before the minus prefix
+		hasDeletedSymbol := bytes.Contains(out, []byte("│-│-removed"))
+		// Added line: gutter ends with "│+│" before the plus prefix
+		hasAddedSymbol := bytes.Contains(out, []byte("│+│+added"))
+		return hasContextSymbol && hasDeletedSymbol && hasAddedSymbol
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
