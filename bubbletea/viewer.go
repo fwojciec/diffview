@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwojciec/diffview"
@@ -12,10 +13,12 @@ import (
 
 // Model is the Bubble Tea model for viewing diffs.
 type Model struct {
-	diff     *diffview.Diff
-	viewport viewport.Model
-	ready    bool
-	content  string
+	diff       *diffview.Diff
+	viewport   viewport.Model
+	ready      bool
+	content    string
+	keymap     KeyMap
+	pendingKey string
 }
 
 // NewModel creates a new Model with the given diff.
@@ -23,6 +26,7 @@ func NewModel(diff *diffview.Diff) Model {
 	return Model{
 		diff:    diff,
 		content: renderDiff(diff),
+		keymap:  DefaultKeyMap(),
 	}
 }
 
@@ -35,9 +39,40 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
+		// Handle multi-key sequences (gg for go to top)
+		if m.pendingKey == "g" && key.Matches(msg, m.keymap.GotoTop) {
+			m.viewport.GotoTop()
+			m.pendingKey = ""
+			return m, nil
+		}
+
+		// Check for start of multi-key sequence
+		if key.Matches(msg, m.keymap.GotoTop) {
+			m.pendingKey = "g"
+			return m, nil
+		}
+
+		// Clear pending key on any other key press
+		m.pendingKey = ""
+
+		switch {
+		case key.Matches(msg, m.keymap.Quit):
 			return m, tea.Quit
+		case key.Matches(msg, m.keymap.GotoBottom):
+			m.viewport.GotoBottom()
+			return m, nil
+		case key.Matches(msg, m.keymap.HalfPageUp):
+			m.viewport.HalfPageUp()
+			return m, nil
+		case key.Matches(msg, m.keymap.HalfPageDown):
+			m.viewport.HalfPageDown()
+			return m, nil
+		case key.Matches(msg, m.keymap.Up):
+			m.viewport.ScrollUp(1)
+			return m, nil
+		case key.Matches(msg, m.keymap.Down):
+			m.viewport.ScrollDown(1)
+			return m, nil
 		}
 	case tea.WindowSizeMsg:
 		if !m.ready {

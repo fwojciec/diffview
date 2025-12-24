@@ -168,6 +168,120 @@ func TestModel_WindowResize(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
+func TestModel_GotoBottomOnG(t *testing.T) {
+	t.Parallel()
+
+	// Create content with many lines so we can scroll
+	lines := make([]diffview.Line, 100)
+	for i := range lines {
+		lines[i] = diffview.Line{Type: diffview.LineContext, Content: "line content"}
+	}
+	// Add unique markers at top and bottom
+	lines[0] = diffview.Line{Type: diffview.LineContext, Content: "FIRST_LINE_MARKER"}
+	lines[99] = diffview.Line{Type: diffview.LineContext, Content: "LAST_LINE_MARKER"}
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				Hunks: []diffview.Hunk{{Lines: lines}},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 10), // Small height to enable scrolling
+	)
+
+	// Wait for initial render with first line visible
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("FIRST_LINE_MARKER"))
+	})
+
+	// Scroll down with G (go to bottom)
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+
+	// Wait for last line to be visible
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("LAST_LINE_MARKER"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_GotoTopOnGG(t *testing.T) {
+	t.Parallel()
+
+	// Create content with many lines so we can scroll
+	lines := make([]diffview.Line, 100)
+	for i := range lines {
+		lines[i] = diffview.Line{Type: diffview.LineContext, Content: "line content"}
+	}
+	// Add unique markers at top and bottom
+	lines[0] = diffview.Line{Type: diffview.LineContext, Content: "FIRST_LINE_MARKER"}
+	lines[99] = diffview.Line{Type: diffview.LineContext, Content: "LAST_LINE_MARKER"}
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				Hunks: []diffview.Hunk{{Lines: lines}},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 10), // Small height to enable scrolling
+	)
+
+	// Wait for initial render with first line visible
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("FIRST_LINE_MARKER"))
+	})
+
+	// First scroll to bottom with G (setup for testing gg)
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+
+	// Wait for last line to be visible
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("LAST_LINE_MARKER"))
+	})
+
+	// Now press gg to go back to top
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+
+	// Wait for first line to be visible again
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("FIRST_LINE_MARKER"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_PendingGClearedOnOtherKey(t *testing.T) {
+	t.Parallel()
+
+	// This test verifies that pressing 'g' followed by a non-'g' key
+	// clears the pending state and doesn't trigger GotoTop.
+	// We test this by pressing 'g' then 'q' - if pending wasn't cleared
+	// properly, the program might not quit.
+
+	diff := &diffview.Diff{}
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Press 'g' then 'q' - should quit (not wait for another 'g')
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
 func TestViewer_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
