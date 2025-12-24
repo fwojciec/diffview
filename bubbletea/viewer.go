@@ -82,20 +82,40 @@ func renderDiff(diff *diffview.Diff) string {
 }
 
 // Viewer implements diffview.Viewer using a Bubble Tea TUI.
-type Viewer struct{}
+type Viewer struct {
+	programOpts []tea.ProgramOption
+}
+
+// ViewerOption configures a Viewer.
+type ViewerOption func(*Viewer)
+
+// WithProgramOptions adds additional tea.ProgramOption to the viewer.
+// This is primarily useful for testing.
+func WithProgramOptions(opts ...tea.ProgramOption) ViewerOption {
+	return func(v *Viewer) {
+		v.programOpts = append(v.programOpts, opts...)
+	}
+}
 
 // NewViewer creates a new Viewer.
-func NewViewer() *Viewer {
-	return &Viewer{}
+func NewViewer(opts ...ViewerOption) *Viewer {
+	v := &Viewer{}
+	for _, opt := range opts {
+		opt(v)
+	}
+	return v
 }
 
 // View displays the diff and blocks until the user exits.
-func (v *Viewer) View(_ context.Context, diff *diffview.Diff) error {
+func (v *Viewer) View(ctx context.Context, diff *diffview.Diff) error {
 	m := NewModel(diff)
-	p := tea.NewProgram(m,
+	opts := []tea.ProgramOption{
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
-	)
+		tea.WithContext(ctx),
+	}
+	opts = append(opts, v.programOpts...)
+	p := tea.NewProgram(m, opts...)
 	_, err := p.Run()
 	return err
 }

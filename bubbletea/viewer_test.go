@@ -2,7 +2,9 @@ package bubbletea_test
 
 import (
 	"bytes"
+	"context"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
@@ -164,4 +166,44 @@ func TestModel_WindowResize(t *testing.T) {
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestViewer_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	// Create a context with cancel
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	diff := &diffview.Diff{}
+
+	// Create viewer with custom IO to avoid TTY requirement
+	var in bytes.Buffer
+	var out bytes.Buffer
+	viewer := bubbletea.NewViewer(
+		bubbletea.WithProgramOptions(
+			tea.WithInput(&in),
+			tea.WithOutput(&out),
+		),
+	)
+
+	// Run viewer in goroutine
+	done := make(chan error, 1)
+	go func() {
+		done <- viewer.View(ctx, diff)
+	}()
+
+	// Give viewer time to start
+	time.Sleep(50 * time.Millisecond)
+
+	// Cancel context - this should terminate the viewer
+	cancel()
+
+	// Viewer should exit within reasonable time
+	select {
+	case <-done:
+		// Success - viewer exited due to context cancellation
+	case <-time.After(1 * time.Second):
+		t.Fatal("viewer did not exit after context cancellation")
+	}
 }
