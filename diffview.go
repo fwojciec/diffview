@@ -20,6 +20,21 @@ type FileDiff struct {
 	Extended  []string // Raw extended headers for passthrough
 }
 
+// Stats returns the number of added and deleted lines in the file.
+func (f FileDiff) Stats() (added, deleted int) {
+	for _, hunk := range f.Hunks {
+		for _, line := range hunk.Lines {
+			switch line.Type {
+			case LineAdded:
+				added++
+			case LineDeleted:
+				deleted++
+			}
+		}
+	}
+	return added, deleted
+}
+
 // FileOp represents the type of operation performed on a file.
 type FileOp int
 

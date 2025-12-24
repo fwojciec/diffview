@@ -461,10 +461,12 @@ func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.
 		}
 		fileCount++
 
-		// Render file headers with styling
+		// Render file headers with styling and change statistics
+		added, deleted := file.Stats()
+		stats := fmt.Sprintf("+%d -%d", added, deleted)
 		sb.WriteString(fileHeaderStyle.Render(fmt.Sprintf("--- %s", file.OldPath)))
 		sb.WriteString("\n")
-		sb.WriteString(fileHeaderStyle.Render(fmt.Sprintf("+++ %s", file.NewPath)))
+		sb.WriteString(fileHeaderStyle.Render(fmt.Sprintf("+++ %s  %s", file.NewPath, stats)))
 		sb.WriteString("\n")
 
 		for _, hunk := range file.Hunks {

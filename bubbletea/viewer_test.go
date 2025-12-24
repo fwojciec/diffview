@@ -1694,3 +1694,48 @@ func TestModel_NoSeparatorBeforeFirstFile(t *testing.T) {
 	// For a single file, there should be no separator
 	assert.NotContains(t, string(out), "─", "single file should not have separator")
 }
+
+func TestModel_RendersFileHeaderWithStats(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/handler.go",
+				NewPath:   "b/handler.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 5,
+						NewStart: 1,
+						NewCount: 7,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context"},
+							{Type: diffview.LineDeleted, Content: "old1"},
+							{Type: diffview.LineDeleted, Content: "old2"},
+							{Type: diffview.LineAdded, Content: "new1"},
+							{Type: diffview.LineAdded, Content: "new2"},
+							{Type: diffview.LineAdded, Content: "new3"},
+							{Type: diffview.LineAdded, Content: "new4"},
+							{Type: diffview.LineContext, Content: "context"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// File header should include change statistics (+4 -2)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("+4")) && bytes.Contains(out, []byte("-2"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
