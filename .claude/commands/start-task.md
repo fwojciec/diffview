@@ -13,9 +13,9 @@ Beads uncommitted: !`git status --porcelain .beads/`
 
 !`bd list --status in_progress 2>/dev/null || echo "None"`
 
-## Ready Tasks
+## Task Argument
 
-!`bd ready`
+Provided task ID: $1
 
 ## Your Workflow
 
@@ -38,15 +38,20 @@ If there are issues with status `in_progress`:
 
 ### 3. Task Selection
 
-Present the ready tasks to the user with a brief recommendation based on:
-- Task complexity and dependencies
-- Logical ordering (foundational work before dependent work)
+**If a task ID was provided via argument ($1)**:
+- Verify the task exists: run `bd show <task-id>`
+- Skip to step 4 (Branch Setup)
 
-Use the AskUserQuestion tool to let the user choose which task to work on.
+**If no task ID was provided**:
+- Run `bd ready` to show available tasks
+- Present the ready tasks to the user with a brief recommendation based on:
+  - Task complexity and dependencies
+  - Logical ordering (foundational work before dependent work)
+- Use the AskUserQuestion tool to let the user choose which task to work on
 
 ### 4. Branch Setup
 
-Once user selects a task:
+Once you have a task ID (either from argument or user selection):
 1. Create branch first: `git checkout -b <task-id>` (e.g., `git checkout -b diffview-abc`)
 2. Mark the task as in-progress: `bd update <task-id> -s in_progress`
 3. Commit the beads change: `git add .beads/ && git commit -m "Start work on <task-id>"`
