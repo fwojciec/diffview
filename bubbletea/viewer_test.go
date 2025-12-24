@@ -325,10 +325,10 @@ func TestModel_NextHunkNavigation(t *testing.T) {
 
 	m := bubbletea.NewModel(diff)
 	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 5), // Small height to enable scrolling
+		teatest.WithInitialTermSize(80, 8), // Height allows hunk header + first content line
 	)
 
-	// Wait for initial render - should show first hunk
+	// Wait for initial render - should show first hunk (after file headers)
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("HUNK1_START"))
 	})
@@ -336,12 +336,12 @@ func TestModel_NextHunkNavigation(t *testing.T) {
 	// Press 'n' to go to next hunk
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 
-	// Should now show second hunk
+	// Should now show second hunk (header + first content line visible)
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("HUNK2_START"))
 	})
 
-	// Press 'n' again to go to third hunk
+	// Press 'n' again to go to third hunk (in file 2)
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 
 	// Should now show third hunk
@@ -393,7 +393,7 @@ func TestModel_PrevHunkNavigation(t *testing.T) {
 
 	m := bubbletea.NewModel(diff)
 	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 5),
+		teatest.WithInitialTermSize(80, 8), // Height allows hunk header + first content line
 	)
 
 	// Wait for initial render
@@ -605,7 +605,7 @@ func TestModel_NavigationAtBoundaries(t *testing.T) {
 
 	m := bubbletea.NewModel(diff)
 	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 5),
+		teatest.WithInitialTermSize(80, 8), // Height allows hunk header + first content line
 	)
 
 	// Wait for initial render at first hunk
@@ -676,18 +676,21 @@ func TestModel_TracksHunkPositions(t *testing.T) {
 
 	m := bubbletea.NewModel(diff)
 
-	// Hunk positions should be tracked: hunk 0 at line 0, hunk 1 at line 2, hunk 2 at line 3
+	// Hunk positions now point to hunk headers (after file headers)
+	// File 1: lines 0-1 are file headers, line 2 is hunk 1 header
+	// Lines 3-4 are hunk 1 content, line 5 is hunk 2 header, line 6 is content
+	// File 2: lines 7-8 are file headers, line 9 is hunk header, line 10 is content
 	hunkPositions := m.HunkPositions()
 	assert.Len(t, hunkPositions, 3, "should track 3 hunks")
-	assert.Equal(t, 0, hunkPositions[0], "first hunk at line 0")
-	assert.Equal(t, 2, hunkPositions[1], "second hunk at line 2")
-	assert.Equal(t, 3, hunkPositions[2], "third hunk at line 3")
+	assert.Equal(t, 2, hunkPositions[0], "first hunk header at line 2")
+	assert.Equal(t, 5, hunkPositions[1], "second hunk header at line 5")
+	assert.Equal(t, 9, hunkPositions[2], "third hunk header at line 9")
 
-	// File positions should be tracked: file 0 at line 0, file 1 at line 3
+	// File positions point to file headers (--- line)
 	filePositions := m.FilePositions()
 	assert.Len(t, filePositions, 2, "should track 2 files")
-	assert.Equal(t, 0, filePositions[0], "first file at line 0")
-	assert.Equal(t, 3, filePositions[1], "second file at line 3")
+	assert.Equal(t, 0, filePositions[0], "first file header at line 0")
+	assert.Equal(t, 7, filePositions[1], "second file header at line 7")
 }
 
 func TestModel_SkipsFilesWithNoHunks(t *testing.T) {
@@ -731,14 +734,19 @@ func TestModel_SkipsFilesWithNoHunks(t *testing.T) {
 	m := bubbletea.NewModel(diff)
 
 	// Should only track files with hunks (skip binary file)
+	// File 1: lines 0-1 (headers), line 2 (hunk), line 3 (content)
+	// Binary file is skipped entirely
+	// File 2: lines 4-5 (headers), line 6 (hunk), line 7 (content)
 	filePositions := m.FilePositions()
 	assert.Len(t, filePositions, 2, "should only track 2 files with hunks")
-	assert.Equal(t, 0, filePositions[0], "first file at line 0")
-	assert.Equal(t, 1, filePositions[1], "second file at line 1")
+	assert.Equal(t, 0, filePositions[0], "first file header at line 0")
+	assert.Equal(t, 4, filePositions[1], "second file header at line 4")
 
 	// Hunks should still be tracked correctly
 	hunkPositions := m.HunkPositions()
 	assert.Len(t, hunkPositions, 2, "should track 2 hunks")
+	assert.Equal(t, 2, hunkPositions[0], "first hunk at line 2")
+	assert.Equal(t, 6, hunkPositions[1], "second hunk at line 6")
 }
 
 func TestViewer_ContextCancellation(t *testing.T) {
@@ -803,4 +811,167 @@ func TestViewer_ContextAlreadyCancelled(t *testing.T) {
 	// Viewer should exit immediately with already-cancelled context
 	err := viewer.View(ctx, diff)
 	require.ErrorIs(t, err, context.Canceled, "viewer should return context.Canceled for pre-cancelled context")
+}
+
+func TestModel_RendersFileHeaders(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context line"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Should render file headers (--- and +++)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("--- a/test.go")) &&
+			bytes.Contains(out, []byte("+++ b/test.go"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_RendersHunkHeaders(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 10,
+						OldCount: 3,
+						NewStart: 10,
+						NewCount: 5,
+						Section:  "func Example",
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context line"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Should render hunk header with @@ markers
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("@@ -10,3 +10,5 @@ func Example"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_RendersLinePrefixes(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 2,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "unchanged"},
+							{Type: diffview.LineDeleted, Content: "removed"},
+							{Type: diffview.LineAdded, Content: "added"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Should render lines with prefixes
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasContext := bytes.Contains(out, []byte(" unchanged"))
+		hasDeleted := bytes.Contains(out, []byte("-removed"))
+		hasAdded := bytes.Contains(out, []byte("+added"))
+		return hasContext && hasDeleted && hasAdded
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_AppliesColors(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context"},
+							{Type: diffview.LineAdded, Content: "added"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for styled output - ANSI escape codes indicate colors are applied
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		// Check for ANSI escape sequence (starts with ESC[)
+		hasAnsiCodes := bytes.Contains(out, []byte("\x1b["))
+		hasContent := bytes.Contains(out, []byte("added"))
+		return hasAnsiCodes && hasContent
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
