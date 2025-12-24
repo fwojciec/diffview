@@ -494,14 +494,14 @@ func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.
 					// Render deleted line with word highlighting
 					sb.WriteString(formatGutter(deletedLine.OldLineNum, deletedLine.NewLineNum, gutterWidth, lineNumStyle))
 					sb.WriteString(formatSymbolColumn(diffview.LineDeleted, lineNumStyle, addedStyle, deletedStyle, contextStyle))
-					styledDeleted := renderLineWithSegments("-", deletedSegs, deletedStyle, deletedHighlightStyle, width)
+					styledDeleted := renderLineWithSegments(deletedSegs, deletedStyle, deletedHighlightStyle, width)
 					sb.WriteString(styledDeleted)
 					sb.WriteString("\n")
 
 					// Render added line with word highlighting
 					sb.WriteString(formatGutter(addedLine.OldLineNum, addedLine.NewLineNum, gutterWidth, lineNumStyle))
 					sb.WriteString(formatSymbolColumn(diffview.LineAdded, lineNumStyle, addedStyle, deletedStyle, contextStyle))
-					styledAdded := renderLineWithSegments("+", addedSegs, addedStyle, addedHighlightStyle, width)
+					styledAdded := renderLineWithSegments(addedSegs, addedStyle, addedHighlightStyle, width)
 					sb.WriteString(styledAdded)
 					sb.WriteString("\n")
 
@@ -515,18 +515,16 @@ func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.
 				sb.WriteString(gutter)
 				sb.WriteString(formatSymbolColumn(line.Type, lineNumStyle, addedStyle, deletedStyle, contextStyle))
 
-				prefix := linePrefixFor(line.Type)
 				lineContent := strings.TrimSuffix(line.Content, "\n")
-				fullLine := prefix + lineContent
 
 				var styledLine string
 				switch line.Type {
 				case diffview.LineAdded:
-					styledLine = addedStyle.Render(padLine(fullLine, width))
+					styledLine = addedStyle.Render(padLine(lineContent, width))
 				case diffview.LineDeleted:
-					styledLine = deletedStyle.Render(padLine(fullLine, width))
+					styledLine = deletedStyle.Render(padLine(lineContent, width))
 				default:
-					styledLine = contextStyle.Render(fullLine)
+					styledLine = contextStyle.Render(lineContent)
 				}
 				sb.WriteString(styledLine)
 				sb.WriteString("\n")
@@ -538,11 +536,8 @@ func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.
 
 // renderLineWithSegments renders a line with word-level highlighting.
 // Segments marked as Changed get the highlight style, others get the base style.
-func renderLineWithSegments(prefix string, segments []diffview.Segment, baseStyle, highlightStyle lipgloss.Style, width int) string {
+func renderLineWithSegments(segments []diffview.Segment, baseStyle, highlightStyle lipgloss.Style, width int) string {
 	var sb strings.Builder
-
-	// Render prefix with base style
-	sb.WriteString(baseStyle.Render(prefix))
 
 	// Render each segment with appropriate style
 	for _, seg := range segments {
@@ -554,8 +549,7 @@ func renderLineWithSegments(prefix string, segments []diffview.Segment, baseStyl
 	}
 
 	// Calculate current length and pad if needed
-	// Note: We need to account for prefix length and Unicode display width
-	currentLen := lipgloss.Width(prefix)
+	var currentLen int
 	for _, seg := range segments {
 		currentLen += lipgloss.Width(seg.Text)
 	}
@@ -660,18 +654,6 @@ func formatHunkHeader(hunk diffview.Hunk) string {
 		header += " " + hunk.Section
 	}
 	return header
-}
-
-// linePrefixFor returns the appropriate prefix for a line type.
-func linePrefixFor(lineType diffview.LineType) string {
-	switch lineType {
-	case diffview.LineAdded:
-		return "+"
-	case diffview.LineDeleted:
-		return "-"
-	default:
-		return " "
-	}
 }
 
 // padLine pads a line with spaces to the specified display width.

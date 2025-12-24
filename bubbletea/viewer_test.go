@@ -904,7 +904,7 @@ func TestModel_RendersHunkHeaders(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestModel_RendersLinePrefixes(t *testing.T) {
+func TestModel_RendersLineContent(t *testing.T) {
 	t.Parallel()
 
 	diff := &diffview.Diff{
@@ -935,11 +935,11 @@ func TestModel_RendersLinePrefixes(t *testing.T) {
 		teatest.WithInitialTermSize(80, 24),
 	)
 
-	// Should render lines with prefixes
+	// Should render line content (symbol column provides +/- indicators, not line prefixes)
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasContext := bytes.Contains(out, []byte(" unchanged"))
-		hasDeleted := bytes.Contains(out, []byte("-removed"))
-		hasAdded := bytes.Contains(out, []byte("+added"))
+		hasContext := bytes.Contains(out, []byte("unchanged"))
+		hasDeleted := bytes.Contains(out, []byte("removed"))
+		hasAdded := bytes.Contains(out, []byte("added"))
 		return hasContext && hasDeleted && hasAdded
 	})
 
@@ -1022,7 +1022,7 @@ func TestModel_AddedLinesHaveBackgroundColor(t *testing.T) {
 	// Wait for output with background color on added line
 	// True color backgrounds use ESC[48;2;R;G;Bm format
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasAddedLine := bytes.Contains(out, []byte("+added line"))
+		hasAddedLine := bytes.Contains(out, []byte("added line"))
 		hasBackgroundColor := bytes.Contains(out, []byte("48;2;"))
 		return hasAddedLine && hasBackgroundColor
 	})
@@ -1064,7 +1064,7 @@ func TestModel_DeletedLinesHaveBackgroundColor(t *testing.T) {
 	// Wait for output with background color on deleted line
 	// True color backgrounds use ESC[48;2;R;G;Bm format
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasDeletedLine := bytes.Contains(out, []byte("-deleted line"))
+		hasDeletedLine := bytes.Contains(out, []byte("deleted line"))
 		hasBackgroundColor := bytes.Contains(out, []byte("48;2;"))
 		return hasDeletedLine && hasBackgroundColor
 	})
@@ -1102,11 +1102,11 @@ func TestModel_BackgroundExtendsFullWidth(t *testing.T) {
 		teatest.WithInitialTermSize(80, 24),
 	)
 
-	// Background should extend beyond just the text "+short"
+	// Background should extend beyond just the text "short"
 	// The styled content should include padding spaces within the style
 	// Looking for background color followed by spaces within the styled region
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasAddedLine := bytes.Contains(out, []byte("+short"))
+		hasAddedLine := bytes.Contains(out, []byte("short"))
 		// Check for padding spaces within styled region (spaces before reset code)
 		// Pattern: spaces followed by ESC[0m (reset)
 		hasStyledPadding := bytes.Contains(out, []byte("   \x1b[0m")) ||
@@ -1150,9 +1150,9 @@ func TestModel_BackgroundExtendsFullWidthWithUnicode(t *testing.T) {
 	)
 
 	// Background should extend full width even with Unicode content
-	// The line "+日本語" should be padded with spaces within the styled region
+	// The line "日本語" should be padded with spaces within the styled region
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasUnicodeLine := bytes.Contains(out, []byte("+日本語"))
+		hasUnicodeLine := bytes.Contains(out, []byte("日本語"))
 		// Check for padding spaces within styled region (spaces before reset code)
 		hasStyledPadding := bytes.Contains(out, []byte("   \x1b[0m")) ||
 			bytes.Contains(out, []byte("  \x1b[0m"))
@@ -1479,16 +1479,16 @@ func TestModel_RendersLineNumbersInGutter(t *testing.T) {
 	)
 
 	// Should render line numbers in gutter
-	// Format: "  10    10 │" for context line
-	// Format: "  11     - │" for deleted line (no new line number)
-	// Format: "   -    11 │" for added line (no old line number)
+	// Format: "  10    10 │ │" for context line
+	// Format: "  11     - │-│" for deleted line (no new line number)
+	// Format: "   -    11 │+│" for added line (no old line number)
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		// Check for context line with both numbers
 		hasContext := bytes.Contains(out, []byte("10")) && bytes.Contains(out, []byte("context"))
-		// Check for deleted line with old number and dash
-		hasDeleted := bytes.Contains(out, []byte("11")) && bytes.Contains(out, []byte("-deleted"))
-		// Check for added line with dash and new number
-		hasAdded := bytes.Contains(out, []byte("+added"))
+		// Check for deleted line with old number
+		hasDeleted := bytes.Contains(out, []byte("11")) && bytes.Contains(out, []byte("deleted"))
+		// Check for added line with new number
+		hasAdded := bytes.Contains(out, []byte("added"))
 		return hasContext && hasDeleted && hasAdded
 	})
 
@@ -1527,11 +1527,11 @@ func TestModel_GutterShowsDashForMissingLineNumbers(t *testing.T) {
 	)
 
 	// For added lines, old line number should show as "-"
-	// The gutter should show something like "   -     2 │+new line"
-	// Look for the separator immediately before the + prefix for added lines
+	// The gutter should show something like "   -     2 │+│new line"
+	// Look for the symbol column immediately before the content
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		// The gutter separator should appear right before the + prefix
-		hasGutterBeforeAdded := bytes.Contains(out, []byte("│+new line"))
+		// The symbol column should appear right before the content
+		hasGutterBeforeAdded := bytes.Contains(out, []byte("│+│new line"))
 		return hasGutterBeforeAdded
 	})
 
@@ -1769,14 +1769,14 @@ func TestModel_RendersGutterSymbols(t *testing.T) {
 	)
 
 	// Gutter should show symbol column with │+│, │-│, │ │ indicators
-	// The gutter symbol appears after line numbers, before content
+	// The gutter symbol appears after line numbers, directly before content (no line prefix)
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		// Context line: gutter ends with "│ │" before the space prefix
-		hasContextSymbol := bytes.Contains(out, []byte("│ │ unchanged"))
-		// Deleted line: gutter ends with "│-│" before the minus prefix
-		hasDeletedSymbol := bytes.Contains(out, []byte("│-│-removed"))
-		// Added line: gutter ends with "│+│" before the plus prefix
-		hasAddedSymbol := bytes.Contains(out, []byte("│+│+added"))
+		// Context line: gutter ends with "│ │" directly before content
+		hasContextSymbol := bytes.Contains(out, []byte("│ │unchanged"))
+		// Deleted line: gutter ends with "│-│" directly before content
+		hasDeletedSymbol := bytes.Contains(out, []byte("│-│removed"))
+		// Added line: gutter ends with "│+│" directly before content
+		hasAddedSymbol := bytes.Contains(out, []byte("│+│added"))
 		return hasContextSymbol && hasDeletedSymbol && hasAddedSymbol
 	})
 
