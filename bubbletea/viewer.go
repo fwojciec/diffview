@@ -26,14 +26,34 @@ type Model struct {
 	width         int   // terminal width for status bar
 }
 
+// ModelOption configures a Model.
+type ModelOption func(*modelConfig)
+
+type modelConfig struct {
+	renderer *lipgloss.Renderer
+}
+
+// WithRenderer sets a custom lipgloss renderer for the model.
+// This is primarily useful for testing to force specific color output.
+func WithRenderer(r *lipgloss.Renderer) ModelOption {
+	return func(cfg *modelConfig) {
+		cfg.renderer = r
+	}
+}
+
 // NewModel creates a new Model with the given diff and default dark theme.
-func NewModel(diff *diffview.Diff) Model {
-	return NewModelWithStyles(diff, defaultStyles())
+func NewModel(diff *diffview.Diff, opts ...ModelOption) Model {
+	return NewModelWithStyles(diff, defaultStyles(), opts...)
 }
 
 // NewModelWithStyles creates a new Model with the given diff and styles.
-func NewModelWithStyles(diff *diffview.Diff, styles diffview.Styles) Model {
-	content, hunkPositions, filePositions := renderDiffWithPositions(diff, styles)
+func NewModelWithStyles(diff *diffview.Diff, styles diffview.Styles, opts ...ModelOption) Model {
+	cfg := &modelConfig{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	content, hunkPositions, filePositions := renderDiffWithPositions(diff, styles, cfg.renderer)
 	return Model{
 		diff:          diff,
 		content:       content,
@@ -48,9 +68,11 @@ func defaultStyles() diffview.Styles {
 	return diffview.Styles{
 		Added: diffview.ColorPair{
 			Foreground: "#a6e3a1", // Green
+			Background: "#2d3f2d", // Subtle green background
 		},
 		Deleted: diffview.ColorPair{
 			Foreground: "#f38ba8", // Red
+			Background: "#3f2d2d", // Subtle red background
 		},
 		Context: diffview.ColorPair{
 			Foreground: "#cdd6f4", // Light gray
@@ -327,17 +349,18 @@ func (m *Model) gotoPrevPosition(positions []int) {
 
 // renderDiffWithPositions converts a Diff to a styled string and tracks hunk/file positions.
 // Positions represent the line number where each file/hunk header begins.
-func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles) (content string, hunkPositions, filePositions []int) {
+// If renderer is nil, the default lipgloss renderer is used.
+func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.Renderer) (content string, hunkPositions, filePositions []int) {
 	if diff == nil {
 		return "", nil, nil
 	}
 
 	// Create lipgloss styles from color pairs
-	fileHeaderStyle := styleFromColorPair(styles.FileHeader)
-	hunkHeaderStyle := styleFromColorPair(styles.HunkHeader)
-	addedStyle := styleFromColorPair(styles.Added)
-	deletedStyle := styleFromColorPair(styles.Deleted)
-	contextStyle := styleFromColorPair(styles.Context)
+	fileHeaderStyle := styleFromColorPair(styles.FileHeader, renderer)
+	hunkHeaderStyle := styleFromColorPair(styles.HunkHeader, renderer)
+	addedStyle := styleFromColorPair(styles.Added, renderer)
+	deletedStyle := styleFromColorPair(styles.Deleted, renderer)
+	contextStyle := styleFromColorPair(styles.Context, renderer)
 
 	var sb strings.Builder
 	lineNum := 0
@@ -376,12 +399,13 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles) (conte
 				fullLine := prefix + lineContent
 
 				// Apply appropriate style based on line type
+				// For added/deleted lines, pad to extend background color full width
 				var styledLine string
 				switch line.Type {
 				case diffview.LineAdded:
-					styledLine = addedStyle.Render(fullLine)
+					styledLine = addedStyle.Render(padLine(fullLine, lineWidth))
 				case diffview.LineDeleted:
-					styledLine = deletedStyle.Render(fullLine)
+					styledLine = deletedStyle.Render(padLine(fullLine, lineWidth))
 				default:
 					styledLine = contextStyle.Render(fullLine)
 				}
@@ -395,8 +419,14 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles) (conte
 }
 
 // styleFromColorPair creates a lipgloss style from a ColorPair.
-func styleFromColorPair(cp diffview.ColorPair) lipgloss.Style {
-	style := lipgloss.NewStyle()
+// If renderer is nil, the default lipgloss renderer is used.
+func styleFromColorPair(cp diffview.ColorPair, renderer *lipgloss.Renderer) lipgloss.Style {
+	var style lipgloss.Style
+	if renderer != nil {
+		style = renderer.NewStyle()
+	} else {
+		style = lipgloss.NewStyle()
+	}
 	if cp.Foreground != "" {
 		style = style.Foreground(lipgloss.Color(cp.Foreground))
 	}
@@ -415,6 +445,10 @@ func formatHunkHeader(hunk diffview.Hunk) string {
 	return header
 }
 
+// lineWidth is the width to pad added/deleted lines to for full-width backgrounds.
+// Using a large fixed value ensures backgrounds extend across typical terminal widths.
+const lineWidth = 256
+
 // linePrefixFor returns the appropriate prefix for a line type.
 func linePrefixFor(lineType diffview.LineType) string {
 	switch lineType {
@@ -425,6 +459,17 @@ func linePrefixFor(lineType diffview.LineType) string {
 	default:
 		return " "
 	}
+}
+
+// padLine pads a line with spaces to the specified display width.
+// Uses lipgloss.Width() to correctly handle multi-byte Unicode characters.
+// If the line is already wider, it is returned unchanged.
+func padLine(line string, width int) string {
+	lineWidth := lipgloss.Width(line)
+	if lineWidth >= width {
+		return line
+	}
+	return line + strings.Repeat(" ", width-lineWidth)
 }
 
 // Viewer implements diffview.Viewer using a Bubble Tea TUI.

@@ -3,16 +3,27 @@ package bubbletea_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/bubbletea"
+	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// trueColorRenderer creates a lipgloss renderer that outputs true colors.
+// This is useful for testing color output without affecting global state.
+func trueColorRenderer() *lipgloss.Renderer {
+	r := lipgloss.NewRenderer(io.Discard)
+	r.SetColorProfile(termenv.TrueColor)
+	return r
+}
 
 // Compile-time check that Viewer implements diffview.Viewer.
 var _ diffview.Viewer = (*bubbletea.Viewer)(nil)
@@ -959,17 +970,191 @@ func TestModel_AppliesColors(t *testing.T) {
 		},
 	}
 
-	m := bubbletea.NewModel(diff)
+	// Use WithRenderer to force true color output without global state
+	m := bubbletea.NewModel(diff, bubbletea.WithRenderer(trueColorRenderer()))
 	tm := teatest.NewTestModel(t, m,
 		teatest.WithInitialTermSize(80, 24),
 	)
 
-	// Wait for styled output - ANSI escape codes indicate colors are applied
+	// Wait for styled output - true color foreground codes use 38;2;R;G;B format
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		// Check for ANSI escape sequence (starts with ESC[)
-		hasAnsiCodes := bytes.Contains(out, []byte("\x1b["))
+		hasForegroundColor := bytes.Contains(out, []byte("38;2;"))
 		hasContent := bytes.Contains(out, []byte("added"))
-		return hasAnsiCodes && hasContent
+		return hasForegroundColor && hasContent
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_AddedLinesHaveBackgroundColor(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context line"},
+							{Type: diffview.LineAdded, Content: "added line"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff, bubbletea.WithRenderer(trueColorRenderer()))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for output with background color on added line
+	// True color backgrounds use ESC[48;2;R;G;Bm format
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasAddedLine := bytes.Contains(out, []byte("+added line"))
+		hasBackgroundColor := bytes.Contains(out, []byte("48;2;"))
+		return hasAddedLine && hasBackgroundColor
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_DeletedLinesHaveBackgroundColor(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 2,
+						NewStart: 1,
+						NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context line"},
+							{Type: diffview.LineDeleted, Content: "deleted line"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff, bubbletea.WithRenderer(trueColorRenderer()))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for output with background color on deleted line
+	// True color backgrounds use ESC[48;2;R;G;Bm format
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasDeletedLine := bytes.Contains(out, []byte("-deleted line"))
+		hasBackgroundColor := bytes.Contains(out, []byte("48;2;"))
+		return hasDeletedLine && hasBackgroundColor
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_BackgroundExtendsFullWidth(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineAdded, Content: "short"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff, bubbletea.WithRenderer(trueColorRenderer()))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Background should extend beyond just the text "+short"
+	// The styled content should include padding spaces within the style
+	// Looking for background color followed by spaces within the styled region
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasAddedLine := bytes.Contains(out, []byte("+short"))
+		// Check for padding spaces within styled region (spaces before reset code)
+		// Pattern: spaces followed by ESC[0m (reset)
+		hasStyledPadding := bytes.Contains(out, []byte("   \x1b[0m")) ||
+			bytes.Contains(out, []byte("  \x1b[0m"))
+		return hasAddedLine && hasStyledPadding
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_BackgroundExtendsFullWidthWithUnicode(t *testing.T) {
+	t.Parallel()
+
+	// Test with multi-byte Unicode characters to ensure padding uses display width
+	// "日本語" is 3 characters, 9 bytes, but 6 display cells (CJK are double-width)
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineAdded, Content: "日本語"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff, bubbletea.WithRenderer(trueColorRenderer()))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Background should extend full width even with Unicode content
+	// The line "+日本語" should be padded with spaces within the styled region
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasUnicodeLine := bytes.Contains(out, []byte("+日本語"))
+		// Check for padding spaces within styled region (spaces before reset code)
+		hasStyledPadding := bytes.Contains(out, []byte("   \x1b[0m")) ||
+			bytes.Contains(out, []byte("  \x1b[0m"))
+		return hasUnicodeLine && hasStyledPadding
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})

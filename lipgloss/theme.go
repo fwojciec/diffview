@@ -27,9 +27,11 @@ func DarkTheme() *Theme {
 		styles: diffview.Styles{
 			Added: diffview.ColorPair{
 				Foreground: "#a6e3a1", // Green
+				Background: "#2d3f2d", // Subtle green background
 			},
 			Deleted: diffview.ColorPair{
 				Foreground: "#f38ba8", // Red
+				Background: "#3f2d2d", // Subtle red background
 			},
 			Context: diffview.ColorPair{
 				Foreground: "#cdd6f4", // Light gray
@@ -51,9 +53,11 @@ func LightTheme() *Theme {
 		styles: diffview.Styles{
 			Added: diffview.ColorPair{
 				Foreground: "#40a02b", // Green
+				Background: "#d4f4d4", // Subtle green background
 			},
 			Deleted: diffview.ColorPair{
 				Foreground: "#d20f39", // Red
+				Background: "#f4d4d4", // Subtle red background
 			},
 			Context: diffview.ColorPair{
 				Foreground: "#4c4f69", // Dark gray
