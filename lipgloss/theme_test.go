@@ -105,6 +105,16 @@ func TestDarkTheme(t *testing.T) {
 		assert.NotEmpty(t, styles.FileSeparator.Foreground)
 	})
 
+	t.Run("dims context lines for better change visibility", func(t *testing.T) {
+		t.Parallel()
+
+		theme := lipgloss.DarkTheme()
+		styles := theme.Styles()
+
+		// Context should use muted gray (#6c7086) so changes pop more
+		assert.Equal(t, "#6c7086", styles.Context.Foreground)
+	})
+
 	t.Run("returns highlight styles for word-level diff", func(t *testing.T) {
 		t.Parallel()
 
@@ -139,6 +149,16 @@ func TestLightTheme(t *testing.T) {
 		assert.NotEmpty(t, styles.HunkHeader.Foreground)
 		assert.NotEmpty(t, styles.FileHeader.Foreground)
 		assert.NotEmpty(t, styles.FileSeparator.Foreground)
+	})
+
+	t.Run("dims context lines for better change visibility", func(t *testing.T) {
+		t.Parallel()
+
+		theme := lipgloss.LightTheme()
+		styles := theme.Styles()
+
+		// Context should use muted gray (#9ca0b0) so changes pop more
+		assert.Equal(t, "#9ca0b0", styles.Context.Foreground)
 	})
 
 	t.Run("returns highlight styles for word-level diff", func(t *testing.T) {

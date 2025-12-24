@@ -34,7 +34,7 @@ func DarkTheme() *Theme {
 				Background: "#3f2d2d", // Subtle red background
 			},
 			Context: diffview.ColorPair{
-				Foreground: "#cdd6f4", // Light gray
+				Foreground: "#6c7086", // Muted gray (dimmed for change visibility)
 			},
 			HunkHeader: diffview.ColorPair{
 				Foreground: "#89b4fa", // Blue
@@ -74,7 +74,7 @@ func LightTheme() *Theme {
 				Background: "#f4d4d4", // Subtle red background
 			},
 			Context: diffview.ColorPair{
-				Foreground: "#4c4f69", // Dark gray
+				Foreground: "#9ca0b0", // Muted gray (dimmed for change visibility)
 			},
 			HunkHeader: diffview.ColorPair{
 				Foreground: "#1e66f5", // Blue
