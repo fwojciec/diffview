@@ -234,3 +234,14 @@ func TestView(t *testing.T) {
 3. **Commands run async** - don't assume order
 4. **No line wrapping** - viewport truncates long lines
 5. **Pass all messages to viewport** for built-in scrolling to work
+6. **Never use `len(string)` for display width** - use `lipgloss.Width()` instead:
+   ```go
+   // WRONG: len() counts bytes, not display width
+   padding := strings.Repeat(" ", maxWidth - len(line))
+
+   // CORRECT: lipgloss.Width() handles Unicode properly
+   padding := strings.Repeat(" ", maxWidth - lipgloss.Width(line))
+   ```
+   - `len("日本語")` = 9 bytes, but displays as 6 cells (CJK are double-width)
+   - `len("emoji 😀")` = 10 bytes, but displays as 8 cells
+   - `lipgloss.Width()` uses go-runewidth internally for correct display width
