@@ -494,10 +494,10 @@ func renderLineWithSegments(prefix string, segments []diffview.Segment, baseStyl
 	}
 
 	// Calculate current length and pad if needed
-	// Note: We need to account for prefix length
-	currentLen := len(prefix)
+	// Note: We need to account for prefix length and Unicode display width
+	currentLen := lipgloss.Width(prefix)
 	for _, seg := range segments {
-		currentLen += len(seg.Text)
+		currentLen += lipgloss.Width(seg.Text)
 	}
 
 	if currentLen < width {

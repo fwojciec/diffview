@@ -62,25 +62,9 @@ func TestDiffer_Diff_MultipleChanges(t *testing.T) {
 
 	oldSegs, newSegs := d.Diff("function calculate(x, y) {", "function calculate(x, y, z) {")
 
-	// The change is adding ", z" before the ")"
-	// Expected segments for old: "function calculate(x, y" [unchanged] + ")" [changed] + " {" [unchanged]
-	// Wait, actually the diff should show the exact characters changed.
-	// Let me think more carefully...
-
-	// Old: "function calculate(x, y) {"
-	// New: "function calculate(x, y, z) {"
-	// The only difference is ", z" inserted before ")"
-
-	// For old string: everything is unchanged since ", z" was inserted
-	// For new string: ", z" is the changed part
-
-	// Actually, for deleted line (old), what was removed? Nothing - text was added.
-	// For added line (new), ", z" is new content.
-
-	// This is tricky - let's check character by character:
-	// Old: "function calculate(x, y) {"
-	// New: "function calculate(x, y, z) {"
-	//                              ^^^ these are new
+	// The only difference is ", z" inserted before ")".
+	// When text is inserted (not replaced), the old string has no changed segments,
+	// and the new string highlights only the inserted portion.
 
 	require.Len(t, oldSegs, 1, "old string has nothing changed (text was added)")
 	assert.Equal(t, diffview.Segment{Text: "function calculate(x, y) {", Changed: false}, oldSegs[0])
@@ -140,4 +124,40 @@ func TestDiffer_Diff_ChangedAtBeginning(t *testing.T) {
 	require.Len(t, newSegs, 2)
 	assert.Equal(t, diffview.Segment{Text: "new", Changed: true}, newSegs[0])
 	assert.Equal(t, diffview.Segment{Text: " prefix unchanged", Changed: false}, newSegs[1])
+}
+
+func TestDiffer_Diff_UnicodeCharacters(t *testing.T) {
+	t.Parallel()
+
+	d := worddiff.NewDiffer()
+
+	t.Run("emoji change", func(t *testing.T) {
+		t.Parallel()
+
+		oldSegs, newSegs := d.Diff("hello 👋 world", "hello 🌍 world")
+
+		require.Len(t, oldSegs, 3)
+		assert.Equal(t, diffview.Segment{Text: "hello ", Changed: false}, oldSegs[0])
+		assert.Equal(t, diffview.Segment{Text: "👋", Changed: true}, oldSegs[1])
+		assert.Equal(t, diffview.Segment{Text: " world", Changed: false}, oldSegs[2])
+
+		require.Len(t, newSegs, 3)
+		assert.Equal(t, diffview.Segment{Text: "hello ", Changed: false}, newSegs[0])
+		assert.Equal(t, diffview.Segment{Text: "🌍", Changed: true}, newSegs[1])
+		assert.Equal(t, diffview.Segment{Text: " world", Changed: false}, newSegs[2])
+	})
+
+	t.Run("CJK characters", func(t *testing.T) {
+		t.Parallel()
+
+		oldSegs, newSegs := d.Diff("hello 世界", "hello 宇宙")
+
+		require.Len(t, oldSegs, 2)
+		assert.Equal(t, diffview.Segment{Text: "hello ", Changed: false}, oldSegs[0])
+		assert.Equal(t, diffview.Segment{Text: "世界", Changed: true}, oldSegs[1])
+
+		require.Len(t, newSegs, 2)
+		assert.Equal(t, diffview.Segment{Text: "hello ", Changed: false}, newSegs[0])
+		assert.Equal(t, diffview.Segment{Text: "宇宙", Changed: true}, newSegs[1])
+	})
 }
