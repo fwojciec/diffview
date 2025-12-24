@@ -593,8 +593,8 @@ func formatHunkHeader(hunk diffview.Hunk) string {
 }
 
 // lineWidth is the width to pad added/deleted lines to for full-width backgrounds.
-// Using a large fixed value ensures backgrounds extend across typical terminal widths.
-const lineWidth = 256
+// Using a large fixed value ensures backgrounds extend across wide terminal widths.
+const lineWidth = 500
 
 // linePrefixFor returns the appropriate prefix for a line type.
 func linePrefixFor(lineType diffview.LineType) string {
