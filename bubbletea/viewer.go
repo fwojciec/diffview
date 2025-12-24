@@ -55,11 +55,16 @@ func NewModelWithStyles(diff *diffview.Diff, styles diffview.Styles, opts ...Mod
 		opt(cfg)
 	}
 
+	// Compute positions eagerly - they don't depend on terminal width
+	hunkPositions, filePositions := computePositions(diff)
+
 	return Model{
-		diff:     diff,
-		styles:   styles,
-		renderer: cfg.renderer,
-		keymap:   DefaultKeyMap(),
+		diff:          diff,
+		styles:        styles,
+		renderer:      cfg.renderer,
+		keymap:        DefaultKeyMap(),
+		hunkPositions: hunkPositions,
+		filePositions: filePositions,
 	}
 }
 
@@ -164,17 +169,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if !m.ready {
 			// First render - create viewport and render content
-			content, hunkPositions, filePositions := renderDiffWithPositions(m.diff, m.styles, m.renderer, m.width)
-			m.hunkPositions = hunkPositions
-			m.filePositions = filePositions
+			content := renderDiff(m.diff, m.styles, m.renderer, m.width)
 			m.viewport = viewport.New(msg.Width, msg.Height-statusBarHeight)
 			m.viewport.SetContent(content)
 			m.ready = true
 		} else if widthChanged {
 			// Width changed - re-render content
-			content, hunkPositions, filePositions := renderDiffWithPositions(m.diff, m.styles, m.renderer, m.width)
-			m.hunkPositions = hunkPositions
-			m.filePositions = filePositions
+			content := renderDiff(m.diff, m.styles, m.renderer, m.width)
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - statusBarHeight
 			m.viewport.SetContent(content)
@@ -378,13 +379,53 @@ func (m *Model) gotoPrevPosition(positions []int) {
 // minGutterWidth is the minimum width of each line number column in the gutter.
 const minGutterWidth = 4
 
-// renderDiffWithPositions converts a Diff to a styled string and tracks hunk/file positions.
-// Positions represent the line number where each file/hunk header begins.
+// computePositions calculates the line numbers where each hunk and file starts.
+// This is independent of terminal width and can be computed eagerly.
+func computePositions(diff *diffview.Diff) (hunkPositions, filePositions []int) {
+	if diff == nil {
+		return nil, nil
+	}
+
+	lineNum := 0
+	fileCount := 0
+	for _, file := range diff.Files {
+		// Skip files without hunks (binary files, etc.)
+		if len(file.Hunks) == 0 {
+			continue
+		}
+
+		// Separator line before file header (except for first file)
+		if fileCount > 0 {
+			lineNum++ // separator
+		}
+		fileCount++
+
+		// Track file position at the first header line
+		filePositions = append(filePositions, lineNum)
+
+		// File headers (--- and +++)
+		lineNum += 2
+
+		for _, hunk := range file.Hunks {
+			// Track hunk position at the header line
+			hunkPositions = append(hunkPositions, lineNum)
+
+			// Hunk header
+			lineNum++
+
+			// Content lines
+			lineNum += len(hunk.Lines)
+		}
+	}
+	return hunkPositions, filePositions
+}
+
+// renderDiff converts a Diff to a styled string.
 // If renderer is nil, the default lipgloss renderer is used.
 // Width is the terminal width for full-width backgrounds.
-func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.Renderer, width int) (content string, hunkPositions, filePositions []int) {
+func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.Renderer, width int) string {
 	if diff == nil {
-		return "", nil, nil
+		return ""
 	}
 
 	// Calculate dynamic gutter width based on max line number in the diff
@@ -405,7 +446,6 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 	differ := worddiff.NewDiffer()
 
 	var sb strings.Builder
-	lineNum := 0
 	fileCount := 0
 	for _, file := range diff.Files {
 		// Only render file if it has hunks (skip binary/empty files)
@@ -418,30 +458,20 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 			separator := strings.Repeat("─", width)
 			sb.WriteString(fileSeparatorStyle.Render(separator))
 			sb.WriteString("\n")
-			lineNum++
 		}
 		fileCount++
-
-		// Track file position at the first header line
-		filePositions = append(filePositions, lineNum)
 
 		// Render file headers with styling
 		sb.WriteString(fileHeaderStyle.Render(fmt.Sprintf("--- %s", file.OldPath)))
 		sb.WriteString("\n")
-		lineNum++
 		sb.WriteString(fileHeaderStyle.Render(fmt.Sprintf("+++ %s", file.NewPath)))
 		sb.WriteString("\n")
-		lineNum++
 
 		for _, hunk := range file.Hunks {
-			// Track hunk position at the header line
-			hunkPositions = append(hunkPositions, lineNum)
-
 			// Render hunk header with styling
 			header := formatHunkHeader(hunk)
 			sb.WriteString(hunkHeaderStyle.Render(header))
 			sb.WriteString("\n")
-			lineNum++
 
 			// Render lines with gutter and prefixes
 			// Use index-based loop to detect deleted+added pairs
@@ -464,14 +494,12 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 					styledDeleted := renderLineWithSegments("-", deletedSegs, deletedStyle, deletedHighlightStyle, width)
 					sb.WriteString(styledDeleted)
 					sb.WriteString("\n")
-					lineNum++
 
 					// Render added line with word highlighting
 					sb.WriteString(formatGutter(addedLine.OldLineNum, addedLine.NewLineNum, gutterWidth, lineNumStyle))
 					styledAdded := renderLineWithSegments("+", addedSegs, addedStyle, addedHighlightStyle, width)
 					sb.WriteString(styledAdded)
 					sb.WriteString("\n")
-					lineNum++
 
 					// Skip the added line since we already processed it
 					i++
@@ -497,11 +525,10 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 				}
 				sb.WriteString(styledLine)
 				sb.WriteString("\n")
-				lineNum++
 			}
 		}
 	}
-	return sb.String(), hunkPositions, filePositions
+	return sb.String()
 }
 
 // renderLineWithSegments renders a line with word-level highlighting.
