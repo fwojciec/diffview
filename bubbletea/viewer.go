@@ -23,6 +23,7 @@ type Model struct {
 	pendingKey    string
 	hunkPositions []int // line numbers where each hunk starts
 	filePositions []int // line numbers where each file starts
+	width         int   // terminal width for status bar
 }
 
 // NewModel creates a new Model with the given diff and default dark theme.
@@ -121,13 +122,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		statusBarHeight := 1
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width, msg.Height)
+			m.viewport = viewport.New(msg.Width, msg.Height-statusBarHeight)
 			m.viewport.SetContent(m.content)
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
-			m.viewport.Height = msg.Height
+			m.viewport.Height = msg.Height - statusBarHeight
 		}
 	}
 
@@ -141,7 +144,73 @@ func (m Model) View() string {
 	if !m.ready {
 		return "Loading..."
 	}
-	return m.viewport.View()
+	return lipgloss.JoinVertical(lipgloss.Left, m.viewport.View(), m.statusBarView())
+}
+
+// statusBarView renders the status bar with position info.
+func (m Model) statusBarView() string {
+	fileIdx, fileTotal := m.currentFilePosition()
+	hunkIdx, hunkTotal := m.currentHunkPosition()
+	scrollPos := m.scrollPosition()
+	keyHints := "j/k:scroll  n/N:hunk  ]/[:file  q:quit"
+	return fmt.Sprintf("file %d/%d  hunk %d/%d  %s  %s", fileIdx, fileTotal, hunkIdx, hunkTotal, scrollPos, keyHints)
+}
+
+// scrollPosition returns a string indicating the scroll position.
+func (m Model) scrollPosition() string {
+	if m.viewport.AtTop() {
+		return "Top"
+	}
+	if m.viewport.AtBottom() {
+		return "Bot"
+	}
+	// Calculate percentage
+	percent := m.viewport.ScrollPercent() * 100
+	return fmt.Sprintf("%d%%", int(percent))
+}
+
+// currentFilePosition returns the current file index (1-based) and total file count.
+func (m Model) currentFilePosition() (current, total int) {
+	total = len(m.filePositions)
+	if total == 0 {
+		return 0, 0
+	}
+
+	currentLine := m.viewport.YOffset
+	current = 1 // Default to first file
+
+	// Find which file we're currently in
+	for i, pos := range m.filePositions {
+		if pos <= currentLine {
+			current = i + 1 // 1-based index
+		} else {
+			break
+		}
+	}
+
+	return current, total
+}
+
+// currentHunkPosition returns the current hunk index (1-based) and total hunk count.
+func (m Model) currentHunkPosition() (current, total int) {
+	total = len(m.hunkPositions)
+	if total == 0 {
+		return 0, 0
+	}
+
+	currentLine := m.viewport.YOffset
+	current = 1 // Default to first hunk
+
+	// Find which hunk we're currently in
+	for i, pos := range m.hunkPositions {
+		if pos <= currentLine {
+			current = i + 1 // 1-based index
+		} else {
+			break
+		}
+	}
+
+	return current, total
 }
 
 // HunkPositions returns the line numbers where each hunk starts.

@@ -975,3 +975,214 @@ func TestModel_AppliesColors(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestModel_StatusBarShowsFilePosition(t *testing.T) {
+	t.Parallel()
+
+	// Create diff with 3 files
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath: "a/first.go",
+				NewPath: "b/first.go",
+				Hunks: []diffview.Hunk{
+					{Lines: []diffview.Line{{Type: diffview.LineContext, Content: "first file"}}},
+				},
+			},
+			{
+				OldPath: "a/second.go",
+				NewPath: "b/second.go",
+				Hunks: []diffview.Hunk{
+					{Lines: []diffview.Line{{Type: diffview.LineContext, Content: "second file"}}},
+				},
+			},
+			{
+				OldPath: "a/third.go",
+				NewPath: "b/third.go",
+				Hunks: []diffview.Hunk{
+					{Lines: []diffview.Line{{Type: diffview.LineContext, Content: "third file"}}},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Status bar should show file 1/3 when at top
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("file 1/3"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_StatusBarShowsHunkPosition(t *testing.T) {
+	t.Parallel()
+
+	// Create diff with one file containing 3 hunks
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath: "a/file.go",
+				NewPath: "b/file.go",
+				Hunks: []diffview.Hunk{
+					{Lines: []diffview.Line{{Type: diffview.LineContext, Content: "hunk1"}}},
+					{Lines: []diffview.Line{{Type: diffview.LineContext, Content: "hunk2"}}},
+					{Lines: []diffview.Line{{Type: diffview.LineContext, Content: "hunk3"}}},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Status bar should show hunk 1/3 when at top
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("hunk 1/3"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_StatusBarShowsScrollPosition(t *testing.T) {
+	t.Parallel()
+
+	// Create diff with many lines to enable scrolling
+	lines := make([]diffview.Line, 100)
+	for i := range lines {
+		lines[i] = diffview.Line{Type: diffview.LineContext, Content: "content line"}
+	}
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath: "a/file.go",
+				NewPath: "b/file.go",
+				Hunks: []diffview.Hunk{
+					{Lines: lines},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 10), // Small height to enable scrolling
+	)
+
+	// At top, should show "Top"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Top"))
+	})
+
+	// Scroll to bottom
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+
+	// At bottom, should show "Bot"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Bot"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_StatusBarShowsKeyHints(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath: "a/file.go",
+				NewPath: "b/file.go",
+				Hunks: []diffview.Hunk{
+					{Lines: []diffview.Line{{Type: diffview.LineContext, Content: "content"}}},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Status bar should show key hints
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasScroll := bytes.Contains(out, []byte("j/k"))
+		hasHunk := bytes.Contains(out, []byte("n/N"))
+		hasFile := bytes.Contains(out, []byte("]/["))
+		hasQuit := bytes.Contains(out, []byte("q"))
+		return hasScroll && hasHunk && hasFile && hasQuit
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_StatusBarUpdatesOnNavigation(t *testing.T) {
+	t.Parallel()
+
+	// Create 3 files with multiple lines each
+	lines := make([]diffview.Line, 20)
+	for i := range lines {
+		lines[i] = diffview.Line{Type: diffview.LineContext, Content: "content line"}
+	}
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath: "a/first.go",
+				NewPath: "b/first.go",
+				Hunks:   []diffview.Hunk{{Lines: lines}},
+			},
+			{
+				OldPath: "a/second.go",
+				NewPath: "b/second.go",
+				Hunks:   []diffview.Hunk{{Lines: lines}},
+			},
+			{
+				OldPath: "a/third.go",
+				NewPath: "b/third.go",
+				Hunks:   []diffview.Hunk{{Lines: lines}},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 10), // Small height to enable scrolling
+	)
+
+	// Initially at file 1/3
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("file 1/3"))
+	})
+
+	// Navigate to next file
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+
+	// Should now show file 2/3
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("file 2/3"))
+	})
+
+	// Navigate to next file
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+
+	// Should now show file 3/3
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("file 3/3"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
