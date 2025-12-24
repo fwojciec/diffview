@@ -687,11 +687,8 @@ func TestModel_TracksHunkPositions(t *testing.T) {
 
 	m := bubbletea.NewModel(diff)
 
-	// Trigger WindowSizeMsg to compute positions
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	m = updated.(bubbletea.Model)
-
-	// Hunk positions now point to hunk headers (after file headers)
+	// Positions should be available immediately - no WindowSizeMsg needed!
+	// Hunk positions point to hunk headers (after file headers)
 	// File 1: lines 0-1 are file headers, line 2 is hunk 1 header
 	// Lines 3-4 are hunk 1 content, line 5 is hunk 2 header, line 6 is content
 	// Line 7 is separator (before file 2)
@@ -749,10 +746,7 @@ func TestModel_SkipsFilesWithNoHunks(t *testing.T) {
 
 	m := bubbletea.NewModel(diff)
 
-	// Trigger WindowSizeMsg to compute positions
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	m = updated.(bubbletea.Model)
-
+	// Positions should be available immediately - no WindowSizeMsg needed!
 	// Should only track files with hunks (skip binary file)
 	// File 1: lines 0-1 (headers), line 2 (hunk), line 3 (content)
 	// Binary file is skipped entirely
