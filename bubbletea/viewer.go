@@ -162,7 +162,10 @@ func renderDiffWithPositions(diff *diffview.Diff) (content string, hunkPositions
 	var sb strings.Builder
 	lineNum := 0
 	for _, file := range diff.Files {
-		filePositions = append(filePositions, lineNum)
+		// Only track file position if file has hunks (skip binary/empty files)
+		if len(file.Hunks) > 0 {
+			filePositions = append(filePositions, lineNum)
+		}
 		for _, hunk := range file.Hunks {
 			hunkPositions = append(hunkPositions, lineNum)
 			for _, line := range hunk.Lines {

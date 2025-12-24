@@ -689,6 +689,57 @@ func TestModel_TracksHunkPositions(t *testing.T) {
 	assert.Equal(t, 3, filePositions[1], "second file at line 3")
 }
 
+func TestModel_SkipsFilesWithNoHunks(t *testing.T) {
+	t.Parallel()
+
+	// Create diff with a mix of files with and without hunks (e.g., binary files)
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath: "a/file1.go",
+				NewPath: "b/file1.go",
+				Hunks: []diffview.Hunk{
+					{
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "file1 content"},
+						},
+					},
+				},
+			},
+			{
+				// Binary file with no hunks
+				OldPath:  "a/image.png",
+				NewPath:  "b/image.png",
+				IsBinary: true,
+				Hunks:    nil,
+			},
+			{
+				OldPath: "a/file2.go",
+				NewPath: "b/file2.go",
+				Hunks: []diffview.Hunk{
+					{
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "file2 content"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+
+	// Should only track files with hunks (skip binary file)
+	filePositions := m.FilePositions()
+	assert.Len(t, filePositions, 2, "should only track 2 files with hunks")
+	assert.Equal(t, 0, filePositions[0], "first file at line 0")
+	assert.Equal(t, 1, filePositions[1], "second file at line 1")
+
+	// Hunks should still be tracked correctly
+	hunkPositions := m.HunkPositions()
+	assert.Len(t, hunkPositions, 2, "should track 2 hunks")
+}
+
 func TestViewer_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
