@@ -66,6 +66,30 @@ func TestDefaultKeyMap_HasExpectedBindings(t *testing.T) {
 		msg = tea.KeyMsg{Type: tea.KeyCtrlC}
 		assert.True(t, key.Matches(msg, km.Quit), "ctrl+c should match Quit binding")
 	})
+
+	t.Run("NextHunk binding", func(t *testing.T) {
+		t.Parallel()
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+		assert.True(t, key.Matches(msg, km.NextHunk), "n should match NextHunk binding")
+	})
+
+	t.Run("PrevHunk binding", func(t *testing.T) {
+		t.Parallel()
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}}
+		assert.True(t, key.Matches(msg, km.PrevHunk), "N should match PrevHunk binding")
+	})
+
+	t.Run("NextFile binding", func(t *testing.T) {
+		t.Parallel()
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}}
+		assert.True(t, key.Matches(msg, km.NextFile), "] should match NextFile binding")
+	})
+
+	t.Run("PrevFile binding", func(t *testing.T) {
+		t.Parallel()
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}}
+		assert.True(t, key.Matches(msg, km.PrevFile), "[ should match PrevFile binding")
+	})
 }
 
 func TestKeyMap_HelpText(t *testing.T) {

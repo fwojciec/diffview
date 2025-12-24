@@ -13,20 +13,25 @@ import (
 
 // Model is the Bubble Tea model for viewing diffs.
 type Model struct {
-	diff       *diffview.Diff
-	viewport   viewport.Model
-	ready      bool
-	content    string
-	keymap     KeyMap
-	pendingKey string
+	diff          *diffview.Diff
+	viewport      viewport.Model
+	ready         bool
+	content       string
+	keymap        KeyMap
+	pendingKey    string
+	hunkPositions []int // line numbers where each hunk starts
+	filePositions []int // line numbers where each file starts
 }
 
 // NewModel creates a new Model with the given diff.
 func NewModel(diff *diffview.Diff) Model {
+	content, hunkPositions, filePositions := renderDiffWithPositions(diff)
 	return Model{
-		diff:    diff,
-		content: renderDiff(diff),
-		keymap:  DefaultKeyMap(),
+		diff:          diff,
+		content:       content,
+		keymap:        DefaultKeyMap(),
+		hunkPositions: hunkPositions,
+		filePositions: filePositions,
 	}
 }
 
@@ -73,6 +78,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keymap.Down):
 			m.viewport.ScrollDown(1)
 			return m, nil
+		case key.Matches(msg, m.keymap.NextHunk):
+			m.gotoNextPosition(m.hunkPositions)
+			return m, nil
+		case key.Matches(msg, m.keymap.PrevHunk):
+			m.gotoPrevPosition(m.hunkPositions)
+			return m, nil
+		case key.Matches(msg, m.keymap.NextFile):
+			m.gotoNextPosition(m.filePositions)
+			return m, nil
+		case key.Matches(msg, m.keymap.PrevFile):
+			m.gotoPrevPosition(m.filePositions)
+			return m, nil
 		}
 	case tea.WindowSizeMsg:
 		if !m.ready {
@@ -98,22 +115,64 @@ func (m Model) View() string {
 	return m.viewport.View()
 }
 
-// renderDiff converts a Diff to a string for display.
-func renderDiff(diff *diffview.Diff) string {
+// HunkPositions returns the line numbers where each hunk starts.
+func (m Model) HunkPositions() []int {
+	return m.hunkPositions
+}
+
+// FilePositions returns the line numbers where each file starts.
+func (m Model) FilePositions() []int {
+	return m.filePositions
+}
+
+// gotoNextPosition scrolls to the next position after the current viewport offset.
+func (m *Model) gotoNextPosition(positions []int) {
+	currentLine := m.viewport.YOffset
+	for _, pos := range positions {
+		if pos > currentLine {
+			m.viewport.SetYOffset(pos)
+			return
+		}
+	}
+	// Already at or past last position, stay where we are
+}
+
+// gotoPrevPosition scrolls to the previous position before the current viewport offset.
+func (m *Model) gotoPrevPosition(positions []int) {
+	currentLine := m.viewport.YOffset
+	// Find the last position that's before the current line
+	for i := len(positions) - 1; i >= 0; i-- {
+		if positions[i] < currentLine {
+			m.viewport.SetYOffset(positions[i])
+			return
+		}
+	}
+	// Already at or before first position, stay where we are
+}
+
+// renderDiffWithPositions converts a Diff to a string and tracks hunk/file positions.
+// Positions represent the line number where each hunk/file's content begins.
+// Note: If file/hunk headers are added in the future, positions should be updated
+// to point to the header lines rather than content lines.
+func renderDiffWithPositions(diff *diffview.Diff) (content string, hunkPositions, filePositions []int) {
 	if diff == nil {
-		return ""
+		return "", nil, nil
 	}
 
 	var sb strings.Builder
+	lineNum := 0
 	for _, file := range diff.Files {
+		filePositions = append(filePositions, lineNum)
 		for _, hunk := range file.Hunks {
+			hunkPositions = append(hunkPositions, lineNum)
 			for _, line := range hunk.Lines {
 				sb.WriteString(line.Content)
 				sb.WriteString("\n")
+				lineNum++
 			}
 		}
 	}
-	return sb.String()
+	return sb.String(), hunkPositions, filePositions
 }
 
 // Viewer implements diffview.Viewer using a Bubble Tea TUI.
