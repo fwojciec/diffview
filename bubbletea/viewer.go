@@ -365,9 +365,6 @@ func (m *Model) gotoPrevPosition(positions []int) {
 // minGutterWidth is the minimum width of each line number column in the gutter.
 const minGutterWidth = 4
 
-// separatorWidth is the width of the separator line between files.
-const separatorWidth = 80
-
 // renderDiffWithPositions converts a Diff to a styled string and tracks hunk/file positions.
 // Positions represent the line number where each file/hunk header begins.
 // If renderer is nil, the default lipgloss renderer is used.
@@ -404,7 +401,7 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 
 		// Render separator before file header (except for first file)
 		if fileCount > 0 {
-			separator := strings.Repeat("─", separatorWidth)
+			separator := strings.Repeat("─", lineWidth)
 			sb.WriteString(fileSeparatorStyle.Render(separator))
 			sb.WriteString("\n")
 			lineNum++
