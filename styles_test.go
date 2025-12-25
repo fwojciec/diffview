@@ -105,11 +105,16 @@ func TestTheme(t *testing.T) {
 
 // mockTheme implements diffview.Theme for testing.
 type mockTheme struct {
-	styles diffview.Styles
+	styles  diffview.Styles
+	palette diffview.Palette
 }
 
 func (m *mockTheme) Styles() diffview.Styles {
 	return m.styles
+}
+
+func (m *mockTheme) Palette() diffview.Palette {
+	return m.palette
 }
 
 // Verify mockTheme implements Theme interface

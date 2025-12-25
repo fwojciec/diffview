@@ -8,12 +8,18 @@ var _ diffview.Theme = (*Theme)(nil)
 
 // Theme implements diffview.Theme with Lipgloss-compatible colors.
 type Theme struct {
-	styles diffview.Styles
+	styles  diffview.Styles
+	palette diffview.Palette
 }
 
 // Styles returns the color styles for this theme.
 func (t *Theme) Styles() diffview.Styles {
 	return t.styles
+}
+
+// Palette returns the semantic color palette for this theme.
+func (t *Theme) Palette() diffview.Palette {
+	return t.palette
 }
 
 // DefaultTheme returns the default theme (dark background optimized).
@@ -59,6 +65,33 @@ func DarkTheme() *Theme {
 				Background: "#f38ba8", // Bright red background
 			},
 		},
+		palette: diffview.Palette{
+			// Base colors (Catppuccin Mocha)
+			Background: "#1e1e2e",
+			Foreground: "#cdd6f4",
+
+			// Diff colors
+			Added:    "#a6e3a1",
+			Deleted:  "#f38ba8",
+			Modified: "#f9e2af",
+			Context:  "#6c7086",
+
+			// Syntax highlighting colors
+			Keyword:     "#cba6f7",
+			String:      "#a6e3a1",
+			Number:      "#fab387",
+			Comment:     "#6c7086",
+			Operator:    "#89dceb",
+			Function:    "#89b4fa",
+			Type:        "#f9e2af",
+			Constant:    "#fab387",
+			Punctuation: "#9399b2",
+
+			// UI colors
+			UIBackground: "#313244",
+			UIForeground: "#a6adc8",
+			UIAccent:     "#89b4fa",
+		},
 	}
 }
 
@@ -98,6 +131,33 @@ func LightTheme() *Theme {
 				Foreground: "#ffffff", // White text on dark background
 				Background: "#d20f39", // Bright red background
 			},
+		},
+		palette: diffview.Palette{
+			// Base colors (Catppuccin Latte)
+			Background: "#eff1f5",
+			Foreground: "#4c4f69",
+
+			// Diff colors
+			Added:    "#40a02b",
+			Deleted:  "#d20f39",
+			Modified: "#df8e1d",
+			Context:  "#9ca0b0",
+
+			// Syntax highlighting colors
+			Keyword:     "#8839ef",
+			String:      "#40a02b",
+			Number:      "#fe640b",
+			Comment:     "#9ca0b0",
+			Operator:    "#04a5e5",
+			Function:    "#1e66f5",
+			Type:        "#df8e1d",
+			Constant:    "#fe640b",
+			Punctuation: "#6c6f85",
+
+			// UI colors
+			UIBackground: "#e6e9ef",
+			UIForeground: "#6c6f85",
+			UIAccent:     "#1e66f5",
 		},
 	}
 }

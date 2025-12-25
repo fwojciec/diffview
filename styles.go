@@ -1,5 +1,39 @@
 package diffview
 
+// Color is a hex string in "#RRGGBB" format (e.g., "#ff0000" for red).
+// Empty string indicates no color (use terminal default).
+type Color string
+
+// Palette defines semantic colors for a theme.
+// All colors are hex strings in "#RRGGBB" format.
+type Palette struct {
+	// Base colors
+	Background Color // Primary background
+	Foreground Color // Primary foreground/text
+
+	// Diff colors
+	Added    Color // Added lines and text
+	Deleted  Color // Deleted lines and text
+	Modified Color // Modified content
+	Context  Color // Unchanged context lines
+
+	// Syntax highlighting colors
+	Keyword     Color // Language keywords (if, for, func, etc.)
+	String      Color // String literals
+	Number      Color // Numeric literals
+	Comment     Color // Comments
+	Operator    Color // Operators (+, -, =, etc.)
+	Function    Color // Function names
+	Type        Color // Type names
+	Constant    Color // Constants and boolean literals
+	Punctuation Color // Brackets, semicolons, etc.
+
+	// UI colors
+	UIBackground Color // Secondary background (panels, sidebars)
+	UIForeground Color // Secondary foreground (dimmed text)
+	UIAccent     Color // Accent color (highlights, focus)
+}
+
 // ColorPair represents a foreground and background color combination.
 // Colors should be hex strings in "#RRGGBB" format (e.g., "#ff0000" for red).
 // Empty strings are valid and indicate no color override (use terminal default).
@@ -25,4 +59,5 @@ type Styles struct {
 // Different implementations can provide light/dark variants.
 type Theme interface {
 	Styles() Styles
+	Palette() Palette
 }

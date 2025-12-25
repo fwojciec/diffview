@@ -125,6 +125,39 @@ func TestDarkTheme(t *testing.T) {
 		assert.NotEmpty(t, styles.AddedHighlight.Foreground)
 		assert.NotEmpty(t, styles.DeletedHighlight.Foreground)
 	})
+
+	t.Run("returns palette with all semantic colors", func(t *testing.T) {
+		t.Parallel()
+
+		theme := lipgloss.DarkTheme()
+		palette := theme.Palette()
+
+		// Base colors
+		assert.NotEmpty(t, palette.Background)
+		assert.NotEmpty(t, palette.Foreground)
+
+		// Diff colors
+		assert.NotEmpty(t, palette.Added)
+		assert.NotEmpty(t, palette.Deleted)
+		assert.NotEmpty(t, palette.Modified)
+		assert.NotEmpty(t, palette.Context)
+
+		// Syntax colors
+		assert.NotEmpty(t, palette.Keyword)
+		assert.NotEmpty(t, palette.String)
+		assert.NotEmpty(t, palette.Number)
+		assert.NotEmpty(t, palette.Comment)
+		assert.NotEmpty(t, palette.Operator)
+		assert.NotEmpty(t, palette.Function)
+		assert.NotEmpty(t, palette.Type)
+		assert.NotEmpty(t, palette.Constant)
+		assert.NotEmpty(t, palette.Punctuation)
+
+		// UI colors
+		assert.NotEmpty(t, palette.UIBackground)
+		assert.NotEmpty(t, palette.UIForeground)
+		assert.NotEmpty(t, palette.UIAccent)
+	})
 }
 
 func TestLightTheme(t *testing.T) {
@@ -170,5 +203,38 @@ func TestLightTheme(t *testing.T) {
 		// Highlight styles should have appropriate colors for light backgrounds
 		assert.NotEmpty(t, styles.AddedHighlight.Foreground)
 		assert.NotEmpty(t, styles.DeletedHighlight.Foreground)
+	})
+
+	t.Run("returns palette with all semantic colors", func(t *testing.T) {
+		t.Parallel()
+
+		theme := lipgloss.LightTheme()
+		palette := theme.Palette()
+
+		// Base colors
+		assert.NotEmpty(t, palette.Background)
+		assert.NotEmpty(t, palette.Foreground)
+
+		// Diff colors
+		assert.NotEmpty(t, palette.Added)
+		assert.NotEmpty(t, palette.Deleted)
+		assert.NotEmpty(t, palette.Modified)
+		assert.NotEmpty(t, palette.Context)
+
+		// Syntax colors
+		assert.NotEmpty(t, palette.Keyword)
+		assert.NotEmpty(t, palette.String)
+		assert.NotEmpty(t, palette.Number)
+		assert.NotEmpty(t, palette.Comment)
+		assert.NotEmpty(t, palette.Operator)
+		assert.NotEmpty(t, palette.Function)
+		assert.NotEmpty(t, palette.Type)
+		assert.NotEmpty(t, palette.Constant)
+		assert.NotEmpty(t, palette.Punctuation)
+
+		// UI colors
+		assert.NotEmpty(t, palette.UIBackground)
+		assert.NotEmpty(t, palette.UIForeground)
+		assert.NotEmpty(t, palette.UIAccent)
 	})
 }
