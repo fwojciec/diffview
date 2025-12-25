@@ -5,6 +5,8 @@ description: Forward-looking code review that evaluates changes against downstre
 
 # Beads-Aware Code Review
 
+Reviews implementation for forward compatibility with downstream work. Primary output is **issue updates** that tighten specifications—not binary approval.
+
 ## Workflow
 
 ### 1. Gather Context
@@ -37,37 +39,44 @@ Task(
   ## Diff
   [git diff main...HEAD]
 
-  ## Structural Checklist
-  - [ ] Dependencies injected, not hardcoded
-  - [ ] Single responsibility maintained
-  - [ ] Seams present for testing
-  - [ ] Interface boundaries clean
-  - [ ] Consistent with codebase patterns
-  - [ ] No assumptions conflicting with downstream work
+  ## Two Types of Findings
 
-  ## YAGNI Distinction
-  - Feature YAGNI: Don't build features you don't need yet. Reject suggestions to add speculative functionality.
-  - Structural YAGNI: DO maintain architectural discipline even when "you don't need it yet." Accept suggestions that add seams, boundaries, or dependency injection.
+  ### A. Implementation Issues (require code changes)
+  Actual bugs or structural violations IN THE CURRENT IMPLEMENTATION:
+  - Hardcoded dependencies that should be injected
+  - Violations of codebase patterns (e.g., Ben Johnson layout)
+  - Assumptions that conflict with downstream requirements
+  - Missing seams that downstream explicitly needs and current scope includes
 
-  The question: "Does this preserve our capacity for change?" - not "Do we need this feature?"
+  ### B. Specification Gaps (require issue updates)
+  Opportunities or risks for downstream work that can be addressed by updating issue notes:
+  - Wiring/integration steps downstream will need to perform
+  - Architectural decisions that affect how downstream should approach its work
+  - Ambiguity about where responsibilities lie between current and downstream tasks
+
+  ## Key Distinction
+
+  Ask: "Is this a problem with the implementation, or unclear scope?"
+
+  - If the implementation is correct for its stated validation criteria → APPROVE + update downstream issues
+  - If the implementation itself has structural violations → REJECT with specific fixes
 
   ## Output Format
   Return:
   1. VERDICT: APPROVE or REJECT
-  2. STRUCTURAL_FINDINGS: List any violations with specific file:line references
-  3. DOWNSTREAM_FRICTION: For each downstream issue, note any friction this creates
-  4. RECOMMENDED_ISSUE_UPDATES: Suggested notes to add to current or downstream issues
-  5. REJECTION_FEEDBACK: If rejecting, specific changes needed
+  2. IMPLEMENTATION_ISSUES: Problems in the code that require changes before merging (empty if none)
+  3. DOWNSTREAM_UPDATES: Specific notes to add to downstream issues to ensure architectural coherence
+  4. CURRENT_ISSUE_NOTES: Any clarifications to add to current issue (optional)
 
-  Bias toward rejection when structural discipline is compromised.
+  Only REJECT for implementation issues. Specification gaps are handled via issue updates.
   """
 )
 ```
 
 ### 3. Act on Results
 
-Based on subagent response:
-- **APPROVE**: Proceed to finish task
-- **REJECT**: Apply feedback, return to implementation
+**Always**: Apply DOWNSTREAM_UPDATES via `bd update <downstream-id> --notes "..."`
 
-Use RECOMMENDED_ISSUE_UPDATES to inform `bd update` commands.
+Based on verdict:
+- **APPROVE**: Update downstream issues, proceed to finish task
+- **REJECT**: Fix implementation issues, run `make validate`, re-review if changes were significant
