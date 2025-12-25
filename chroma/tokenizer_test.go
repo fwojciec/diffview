@@ -22,7 +22,8 @@ func TestTokenizer_Tokenize(t *testing.T) {
 	t.Run("tokenizes Go code", func(t *testing.T) {
 		t.Parallel()
 
-		tokenizer := chroma.NewTokenizer(testStyleFunc())
+		tokenizer, err := chroma.NewTokenizer(testStyleFunc())
+		require.NoError(t, err)
 		tokens := tokenizer.Tokenize("go", `package main`)
 
 		require.NotEmpty(t, tokens, "expected tokens for valid Go code")
@@ -48,7 +49,8 @@ func TestTokenizer_Tokenize(t *testing.T) {
 	t.Run("returns nil for unsupported language", func(t *testing.T) {
 		t.Parallel()
 
-		tokenizer := chroma.NewTokenizer(testStyleFunc())
+		tokenizer, err := chroma.NewTokenizer(testStyleFunc())
+		require.NoError(t, err)
 		tokens := tokenizer.Tokenize("nonexistent-language-xyz", "some code")
 
 		assert.Nil(t, tokens)
@@ -57,7 +59,8 @@ func TestTokenizer_Tokenize(t *testing.T) {
 	t.Run("handles empty source", func(t *testing.T) {
 		t.Parallel()
 
-		tokenizer := chroma.NewTokenizer(testStyleFunc())
+		tokenizer, err := chroma.NewTokenizer(testStyleFunc())
+		require.NoError(t, err)
 		tokens := tokenizer.Tokenize("go", "")
 
 		assert.Empty(t, tokens)
@@ -66,7 +69,8 @@ func TestTokenizer_Tokenize(t *testing.T) {
 	t.Run("styles function names", func(t *testing.T) {
 		t.Parallel()
 
-		tokenizer := chroma.NewTokenizer(testStyleFunc())
+		tokenizer, err := chroma.NewTokenizer(testStyleFunc())
+		require.NoError(t, err)
 		// Code with a function definition
 		tokens := tokenizer.Tokenize("go", `func foo() {}`)
 
@@ -88,7 +92,8 @@ func TestTokenizer_Tokenize(t *testing.T) {
 
 		// Use test palette which has known colors
 		palette := lipgloss.TestTheme().Palette()
-		tokenizer := chroma.NewTokenizer(chroma.StyleFromPalette(palette))
+		tokenizer, err := chroma.NewTokenizer(chroma.StyleFromPalette(palette))
+		require.NoError(t, err)
 		tokens := tokenizer.Tokenize("go", `package main`)
 
 		require.NotEmpty(t, tokens)
@@ -103,5 +108,12 @@ func TestTokenizer_Tokenize(t *testing.T) {
 			}
 		}
 		t.Fatal("did not find 'package' keyword in tokens")
+	})
+
+	t.Run("returns error for nil styleFunc", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := chroma.NewTokenizer(nil)
+		assert.Error(t, err)
 	})
 }

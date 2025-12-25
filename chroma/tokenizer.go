@@ -2,6 +2,8 @@
 package chroma
 
 import (
+	"errors"
+
 	chromalib "github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/fwojciec/diffview"
@@ -20,11 +22,11 @@ type Tokenizer struct {
 
 // NewTokenizer creates a new chroma-based tokenizer with the given style function.
 // Use StyleFromPalette to create a style function from a diffview.Palette.
-func NewTokenizer(styleFunc StyleFunc) *Tokenizer {
+func NewTokenizer(styleFunc StyleFunc) (*Tokenizer, error) {
 	if styleFunc == nil {
-		panic("chroma: styleFunc cannot be nil")
+		return nil, errors.New("chroma: styleFunc cannot be nil")
 	}
-	return &Tokenizer{styleFunc: styleFunc}
+	return &Tokenizer{styleFunc: styleFunc}, nil
 }
 
 // Tokenize splits source code into syntax-highlighted tokens for the given language.
