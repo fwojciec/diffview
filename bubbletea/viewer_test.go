@@ -25,9 +25,6 @@ func trueColorRenderer() *lipgloss.Renderer {
 	return r
 }
 
-// Compile-time check that Viewer implements diffview.Viewer.
-var _ diffview.Viewer = (*bubbletea.Viewer)(nil)
-
 func TestModel_Init(t *testing.T) {
 	t.Parallel()
 

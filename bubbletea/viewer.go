@@ -14,6 +14,9 @@ import (
 	"github.com/fwojciec/diffview/worddiff"
 )
 
+// Compile-time interface verification.
+var _ diffview.Viewer = (*Viewer)(nil)
+
 // Model is the Bubble Tea model for viewing diffs.
 type Model struct {
 	diff          *diffview.Diff

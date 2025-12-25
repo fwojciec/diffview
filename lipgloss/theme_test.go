@@ -3,19 +3,12 @@ package lipgloss_test
 import (
 	"testing"
 
-	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/lipgloss"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestDefaultTheme(t *testing.T) {
 	t.Parallel()
-
-	t.Run("implements Theme interface", func(t *testing.T) {
-		t.Parallel()
-
-		var _ diffview.Theme = lipgloss.DefaultTheme()
-	})
 
 	t.Run("returns styles with added line coloring", func(t *testing.T) {
 		t.Parallel()
@@ -83,12 +76,6 @@ func TestDefaultTheme(t *testing.T) {
 
 func TestDarkTheme(t *testing.T) {
 	t.Parallel()
-
-	t.Run("implements Theme interface", func(t *testing.T) {
-		t.Parallel()
-
-		var _ diffview.Theme = lipgloss.DarkTheme()
-	})
 
 	t.Run("returns styles optimized for dark backgrounds", func(t *testing.T) {
 		t.Parallel()
@@ -162,12 +149,6 @@ func TestDarkTheme(t *testing.T) {
 
 func TestLightTheme(t *testing.T) {
 	t.Parallel()
-
-	t.Run("implements Theme interface", func(t *testing.T) {
-		t.Parallel()
-
-		var _ diffview.Theme = lipgloss.LightTheme()
-	})
 
 	t.Run("returns styles optimized for light backgrounds", func(t *testing.T) {
 		t.Parallel()

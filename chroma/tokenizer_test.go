@@ -56,12 +56,6 @@ func TestTokenizer_Tokenize(t *testing.T) {
 		assert.Empty(t, tokens)
 	})
 
-	t.Run("implements Tokenizer interface", func(t *testing.T) {
-		t.Parallel()
-
-		var _ diffview.Tokenizer = chroma.NewTokenizer()
-	})
-
 	t.Run("differentiates function names from builtin names", func(t *testing.T) {
 		t.Parallel()
 

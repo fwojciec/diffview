@@ -8,6 +8,9 @@ import (
 	"github.com/fwojciec/diffview"
 )
 
+// Compile-time interface verification.
+var _ diffview.Parser = (*Parser)(nil)
+
 // Parser parses unified diff content using go-gitdiff.
 type Parser struct{}
 

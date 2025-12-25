@@ -351,6 +351,3 @@ new mode 100755
 	assert.Equal(t, diffview.FileModified, f.Operation)
 	assert.Empty(t, f.Hunks)
 }
-
-// Verify interface compliance at compile time.
-var _ diffview.Parser = (*gitdiff.Parser)(nil)
