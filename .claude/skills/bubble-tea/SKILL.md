@@ -187,45 +187,120 @@ case tea.WindowSizeMsg:
     m.viewport.Height = msg.Height - headerHeight - footerHeight
 ```
 
-## Testing with Golden Files
+## Testing
 
 **Package**: `github.com/charmbracelet/x/exp/teatest`
 
-```go
-import (
-    "testing"
-    "io"
-    tea "github.com/charmbracelet/bubbletea"
-    "github.com/charmbracelet/x/exp/teatest"
-)
+### Deterministic Color Output
 
+Use explicit renderer to avoid terminal auto-detection:
+
+```go
+// Test helper - creates renderer with fixed TrueColor profile
+func trueColorRenderer() *lipgloss.Renderer {
+    r := lipgloss.NewRenderer(io.Discard)
+    r.SetColorProfile(termenv.TrueColor)
+    return r
+}
+
+// Pass to model via option
+m := NewModel(content,
+    WithTheme(lipgloss.TestTheme()),      // Stable colors
+    WithRenderer(trueColorRenderer()),     // Deterministic output
+)
+```
+
+**Why**: Without explicit renderer, Lipgloss auto-detects terminal capabilities. Tests become flaky across environments.
+
+### Test Theme Pattern
+
+Use `TestTheme()` with stable, predictable colors. Production themes can evolve without breaking tests:
+
+```go
+// In lipgloss/theme.go
+func TestTheme() diffview.Theme {
+    return newTheme(diffview.Palette{
+        Added:   "#00ff00",  // Pure green - easy to verify
+        Deleted: "#ff0000",  // Pure red
+        // ... stable values that won't change
+    })
+}
+```
+
+**Principle**: `TestTheme()` is a stable contract. `DefaultTheme()` can change aesthetically.
+
+### Behavior Tests vs Color Tests
+
+**Behavior tests** - verify functionality, not appearance:
+```go
+func TestNavigation(t *testing.T) {
+    t.Parallel()
+
+    m := NewModel(diff, WithTheme(lipgloss.TestTheme()))
+    tm := teatest.NewTestModel(t, m,
+        teatest.WithInitialTermSize(80, 24),
+    )
+
+    tm.Send(tea.KeyMsg{Runes: []rune{'j'}})
+
+    // Check content presence, ignore colors
+    teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+        return bytes.Contains(out, []byte("expected content"))
+    })
+}
+```
+
+**Color integration tests** - verify colors apply correctly:
+```go
+func TestColorsApplied(t *testing.T) {
+    t.Parallel()
+
+    m := NewModel(diff,
+        WithTheme(lipgloss.TestTheme()),
+        WithRenderer(trueColorRenderer()),
+    )
+    tm := teatest.NewTestModel(t, m,
+        teatest.WithInitialTermSize(80, 24),
+    )
+
+    teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+        // TrueColor format: ESC[48;2;R;G;Bm (background)
+        hasBackground := bytes.Contains(out, []byte("48;2;"))
+        hasContent := bytes.Contains(out, []byte("+added"))
+        return hasBackground && hasContent
+    })
+}
+```
+
+### Golden File Testing
+
+```go
 func TestView(t *testing.T) {
     m := NewModel(testContent)
     tm := teatest.NewTestModel(t, m,
         teatest.WithInitialTermSize(80, 24),
     )
 
-    // Send key presses
-    tm.Send(tea.KeyMsg{Type: tea.KeyDown})
     tm.Send(tea.KeyMsg{Runes: []rune{'j'}})
-
-    // Wait for specific output
-    teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-        return bytes.Contains(out, []byte("expected"))
-    })
-
     tm.Send(tea.KeyMsg{Runes: []rune{'q'}})
 
-    // Compare against golden file (testdata/TestView.golden)
     out, _ := io.ReadAll(tm.FinalOutput(t))
-    teatest.RequireEqualOutput(t, out)
+    teatest.RequireEqualOutput(t, out)  // Compares to testdata/TestView.golden
 }
 ```
 
 **Workflow**:
 1. `go test -update` → creates/updates `testdata/TestName.golden`
-2. Read `.golden` files to see terminal output (includes ANSI codes)
+2. Golden files include ANSI codes - use `TestTheme()` for stability
 3. Tests fail with unified diff when output changes
+
+### Testing Principles
+
+1. **Behavior tests use `TestTheme()`** - decouples from aesthetic changes
+2. **Always use explicit renderer** - no terminal auto-detection in tests
+3. **Check content, not colors** for most tests - colors are implementation detail
+4. **Color tests verify ANSI presence** - `bytes.Contains(out, []byte("48;2;"))` not specific RGB values
+5. **One theme change shouldn't break behavior tests** - only color-specific tests
 
 ## Gotchas
 
