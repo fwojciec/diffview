@@ -100,20 +100,31 @@ Only proceed to step 8 when `make validate` passes cleanly.
 
 ### 8. Self-Review
 
-Before finishing, get a fresh perspective on the implementation:
+Before finishing, get a fresh perspective on the implementation.
 
-1. Use the `code-review:code-review` skill to review the implementation
-   - Wait for findings to be returned
+**Launch both reviews in parallel:**
+1. `code-review:code-review` - correctness, style, bugs
+2. `beads-review` - forward compatibility with downstream work
 
-2. Use `superpowers:receiving-code-review` to evaluate the feedback
-   - Apply critical technical judgment to each suggestion
-   - Not all feedback requires action - evaluate on merit
-   - Accept suggestions that improve correctness or clarity
-   - Push back on suggestions that are stylistic preferences or misunderstand context
+Wait for both to complete.
 
-3. If changes are needed:
-   - Implement fixes (return to step 5 if substantial)
-   - Run `make validate` again
-   - Repeat self-review if changes were significant
+**Evaluate feedback with YAGNI awareness:**
 
-Only proceed to `/finish-task` when review is addressed and validation passes.
+When processing review suggestions, distinguish between:
+- **Feature YAGNI**: Reject suggestions to add features/capabilities you don't need yet
+- **Structural YAGNI**: Accept suggestions that add seams, boundaries, or dependency injection - even if "you don't need it yet"
+
+The question: "Does this preserve our capacity for change?" - not "Do we need this feature?"
+
+Use `superpowers:receiving-code-review` to evaluate each suggestion on merit. Accept what improves correctness or structural discipline. Push back on stylistic preferences.
+
+**If beads-review recommends issue updates:**
+- Update current issue notes with review findings
+- Update downstream issues if insights affect their specs
+
+**If changes are needed:**
+- Implement fixes (return to step 5 if substantial)
+- Run `make validate` again
+- Repeat self-review if changes were significant
+
+Only proceed to `/finish-task` when both reviews are addressed and validation passes.
