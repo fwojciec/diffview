@@ -18,3 +18,11 @@ type Tokenizer interface {
 	// Returns nil if the language is not supported.
 	Tokenize(language, source string) []Token
 }
+
+// LanguageDetector determines the programming language from a file path.
+type LanguageDetector interface {
+	// DetectFromPath returns the language name for the given path,
+	// or an empty string if the language cannot be determined.
+	// Accepts paths with or without "a/" or "b/" prefixes (common in diffs).
+	DetectFromPath(path string) string
+}
