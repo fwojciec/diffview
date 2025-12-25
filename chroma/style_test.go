@@ -65,10 +65,11 @@ func TestStyleFromPalette(t *testing.T) {
 		assert.Equal(t, "#0000ff", style.Foreground)
 	})
 
-	t.Run("type keywords use palette color", func(t *testing.T) {
+	t.Run("type keywords use palette color and are bold", func(t *testing.T) {
 		t.Parallel()
 		style := styleFunc(chromalib.KeywordType)
 		assert.Equal(t, "#ffff00", style.Foreground)
+		assert.True(t, style.Bold)
 	})
 
 	t.Run("constants use palette color", func(t *testing.T) {

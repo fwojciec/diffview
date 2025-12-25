@@ -7,7 +7,7 @@ import (
 
 // StyleFromPalette returns a function that maps chroma token types to diffview styles
 // based on the provided palette colors.
-func StyleFromPalette(p diffview.Palette) func(chromalib.TokenType) diffview.Style {
+func StyleFromPalette(p diffview.Palette) StyleFunc {
 	return func(tt chromalib.TokenType) diffview.Style {
 		switch tt {
 		// Type keywords (handled separately from other keywords)

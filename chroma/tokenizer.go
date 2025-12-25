@@ -21,6 +21,9 @@ type Tokenizer struct {
 // NewTokenizer creates a new chroma-based tokenizer with the given style function.
 // Use StyleFromPalette to create a style function from a diffview.Palette.
 func NewTokenizer(styleFunc StyleFunc) *Tokenizer {
+	if styleFunc == nil {
+		panic("chroma: styleFunc cannot be nil")
+	}
 	return &Tokenizer{styleFunc: styleFunc}
 }
 
