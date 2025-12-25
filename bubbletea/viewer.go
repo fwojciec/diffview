@@ -493,13 +493,15 @@ func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.
 
 					// Render deleted line with word highlighting
 					sb.WriteString(formatGutter(deletedLine.OldLineNum, deletedLine.NewLineNum, gutterWidth, lineNumStyle))
-					styledDeleted := renderLineWithSegments("-", deletedSegs, deletedStyle, deletedHighlightStyle, width)
+					sb.WriteString(formatSymbolColumn(diffview.LineDeleted, lineNumStyle, addedStyle, deletedStyle, contextStyle))
+					styledDeleted := renderLineWithSegments(deletedSegs, deletedStyle, deletedHighlightStyle, width)
 					sb.WriteString(styledDeleted)
 					sb.WriteString("\n")
 
 					// Render added line with word highlighting
 					sb.WriteString(formatGutter(addedLine.OldLineNum, addedLine.NewLineNum, gutterWidth, lineNumStyle))
-					styledAdded := renderLineWithSegments("+", addedSegs, addedStyle, addedHighlightStyle, width)
+					sb.WriteString(formatSymbolColumn(diffview.LineAdded, lineNumStyle, addedStyle, deletedStyle, contextStyle))
+					styledAdded := renderLineWithSegments(addedSegs, addedStyle, addedHighlightStyle, width)
 					sb.WriteString(styledAdded)
 					sb.WriteString("\n")
 
@@ -511,19 +513,18 @@ func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.
 				// Standard line rendering (no word-level diff)
 				gutter := formatGutter(line.OldLineNum, line.NewLineNum, gutterWidth, lineNumStyle)
 				sb.WriteString(gutter)
+				sb.WriteString(formatSymbolColumn(line.Type, lineNumStyle, addedStyle, deletedStyle, contextStyle))
 
-				prefix := linePrefixFor(line.Type)
 				lineContent := strings.TrimSuffix(line.Content, "\n")
-				fullLine := prefix + lineContent
 
 				var styledLine string
 				switch line.Type {
 				case diffview.LineAdded:
-					styledLine = addedStyle.Render(padLine(fullLine, width))
+					styledLine = addedStyle.Render(padLine(lineContent, width))
 				case diffview.LineDeleted:
-					styledLine = deletedStyle.Render(padLine(fullLine, width))
+					styledLine = deletedStyle.Render(padLine(lineContent, width))
 				default:
-					styledLine = contextStyle.Render(fullLine)
+					styledLine = contextStyle.Render(lineContent)
 				}
 				sb.WriteString(styledLine)
 				sb.WriteString("\n")
@@ -535,11 +536,8 @@ func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.
 
 // renderLineWithSegments renders a line with word-level highlighting.
 // Segments marked as Changed get the highlight style, others get the base style.
-func renderLineWithSegments(prefix string, segments []diffview.Segment, baseStyle, highlightStyle lipgloss.Style, width int) string {
+func renderLineWithSegments(segments []diffview.Segment, baseStyle, highlightStyle lipgloss.Style, width int) string {
 	var sb strings.Builder
-
-	// Render prefix with base style
-	sb.WriteString(baseStyle.Render(prefix))
 
 	// Render each segment with appropriate style
 	for _, seg := range segments {
@@ -551,8 +549,7 @@ func renderLineWithSegments(prefix string, segments []diffview.Segment, baseStyl
 	}
 
 	// Calculate current length and pad if needed
-	// Note: We need to account for prefix length and Unicode display width
-	currentLen := lipgloss.Width(prefix)
+	var currentLen int
 	for _, seg := range segments {
 		currentLen += lipgloss.Width(seg.Text)
 	}
@@ -589,13 +586,14 @@ func calculateGutterWidth(diff *diffview.Diff) int {
 }
 
 // formatGutter formats the gutter column with old and new line numbers.
-// Format: "  12    14 │" for lines with both numbers
-// Format: "  12     - │" for deleted lines (no new line number)
-// Format: "   -    14 │" for added lines (no old line number)
+// Format: "  12    14 " for lines with both numbers
+// Format: "  12     - " for deleted lines (no new line number)
+// Format: "   -    14 " for added lines (no old line number)
+// Note: The trailing separator is now part of the symbol column, not the gutter.
 func formatGutter(oldLineNum, newLineNum, width int, style lipgloss.Style) string {
 	oldStr := formatLineNum(oldLineNum, width)
 	newStr := formatLineNum(newLineNum, width)
-	gutter := fmt.Sprintf("%s %s │", oldStr, newStr)
+	gutter := fmt.Sprintf("%s %s ", oldStr, newStr)
 	return style.Render(gutter)
 }
 
@@ -606,6 +604,29 @@ func formatLineNum(num, width int) string {
 		return fmt.Sprintf("%*s", width, "-")
 	}
 	return fmt.Sprintf("%*d", width, num)
+}
+
+// formatSymbolColumn renders the gutter symbol column for a line type.
+// Returns styled string like "│+│" for added, "│-│" for deleted, "│ │" for context.
+// The symbol is colored to match the line type, borders use line number style.
+func formatSymbolColumn(lineType diffview.LineType, lineNumStyle, addedStyle, deletedStyle, contextStyle lipgloss.Style) string {
+	var symbol string
+	var symbolStyle lipgloss.Style
+
+	switch lineType {
+	case diffview.LineAdded:
+		symbol = "+"
+		symbolStyle = addedStyle
+	case diffview.LineDeleted:
+		symbol = "-"
+		symbolStyle = deletedStyle
+	default:
+		symbol = " "
+		symbolStyle = contextStyle
+	}
+
+	// Format: │symbol│ - borders in muted line number style, symbol in line type color
+	return lineNumStyle.Render("│") + symbolStyle.Render(symbol) + lineNumStyle.Render("│")
 }
 
 // styleFromColorPair creates a lipgloss style from a ColorPair.
@@ -633,18 +654,6 @@ func formatHunkHeader(hunk diffview.Hunk) string {
 		header += " " + hunk.Section
 	}
 	return header
-}
-
-// linePrefixFor returns the appropriate prefix for a line type.
-func linePrefixFor(lineType diffview.LineType) string {
-	switch lineType {
-	case diffview.LineAdded:
-		return "+"
-	case diffview.LineDeleted:
-		return "-"
-	default:
-		return " "
-	}
 }
 
 // padLine pads a line with spaces to the specified display width.
