@@ -497,8 +497,8 @@ func computePositions(diff *diffview.Diff) (hunkPositions, filePositions []int) 
 
 	lineNum := 0
 	for _, file := range diff.Files {
-		// Skip files without hunks (binary files, etc.)
-		if len(file.Hunks) == 0 {
+		// Skip files that shouldn't be rendered (binary files, mode-only changes)
+		if !shouldRenderFile(file) {
 			continue
 		}
 
@@ -508,18 +508,61 @@ func computePositions(diff *diffview.Diff) (hunkPositions, filePositions []int) 
 		// Enhanced file header (single line: ── file ─── +N -M ──)
 		lineNum++
 
-		for _, hunk := range file.Hunks {
-			// Track hunk position at the header line
-			hunkPositions = append(hunkPositions, lineNum)
-
-			// Hunk header
+		if len(file.Hunks) == 0 {
+			// Empty file: one line for "(empty)" indicator
 			lineNum++
+		} else {
+			for _, hunk := range file.Hunks {
+				// Track hunk position at the header line
+				hunkPositions = append(hunkPositions, lineNum)
 
-			// Content lines
-			lineNum += len(hunk.Lines)
+				// Hunk header
+				lineNum++
+
+				// Content lines
+				lineNum += len(hunk.Lines)
+			}
 		}
 	}
 	return hunkPositions, filePositions
+}
+
+// shouldRenderFile returns true if the file should be rendered in the diff view.
+// Binary files are skipped, but empty text files (new or deleted) are shown.
+func shouldRenderFile(file diffview.FileDiff) bool {
+	// Always skip binary files
+	if file.IsBinary {
+		return false
+	}
+	// Render files with hunks
+	if len(file.Hunks) > 0 {
+		return true
+	}
+	// Render empty new/deleted files
+	if file.Operation == diffview.FileAdded || file.Operation == diffview.FileDeleted {
+		return true
+	}
+	// Render renames/copies (even without content changes)
+	if file.Operation == diffview.FileRenamed || file.Operation == diffview.FileCopied {
+		return true
+	}
+	// Skip mode-only changes without hunks (or add logic to show them later)
+	return false
+}
+
+// filePath returns the display path for a file in the diff.
+// Uses NewPath for most operations, OldPath for deleted files.
+func filePath(file diffview.FileDiff) string {
+	var path string
+	if file.Operation == diffview.FileDeleted {
+		path = file.OldPath
+	} else {
+		path = file.NewPath
+	}
+	// Strip "a/" or "b/" prefix if present
+	path = strings.TrimPrefix(path, "a/")
+	path = strings.TrimPrefix(path, "b/")
+	return path
 }
 
 // renderConfig holds all rendering parameters for renderDiff.
@@ -562,15 +605,16 @@ func renderDiff(cfg renderConfig) string {
 
 	var sb strings.Builder
 	for _, file := range diff.Files {
-		// Only render file if it has hunks (skip binary/empty files)
-		if len(file.Hunks) == 0 {
+		// Skip files that shouldn't be rendered (binary files, mode-only changes)
+		if !shouldRenderFile(file) {
 			continue
 		}
 
 		// Detect language for syntax highlighting
+		path := filePath(file)
 		var language string
 		if cfg.languageDetector != nil {
-			language = cfg.languageDetector.DetectFromPath(file.NewPath)
+			language = cfg.languageDetector.DetectFromPath(path)
 		}
 
 		// Render enhanced file header with box-drawing and change statistics
@@ -581,7 +625,6 @@ func renderDiff(cfg renderConfig) string {
 		// Build header: "── " + path + " " + fill + " " + stats + " ──"
 		prefix := "── "
 		suffix := " ──"
-		path := strings.TrimPrefix(file.NewPath, "b/")
 		middle := prefix + path + " "
 		end := " " + stats + suffix
 
@@ -595,6 +638,14 @@ func renderDiff(cfg renderConfig) string {
 		header := middle + fill + end
 		sb.WriteString(fileHeaderStyle.Render(header))
 		sb.WriteString("\n")
+
+		// Handle empty files (no hunks)
+		if len(file.Hunks) == 0 {
+			emptyLine := contextStyle.Render("(empty)")
+			sb.WriteString(emptyLine)
+			sb.WriteString("\n")
+			continue
+		}
 
 		for _, hunk := range file.Hunks {
 			// Render hunk header with styling

@@ -2246,3 +2246,63 @@ func TestModel_WordDiffHighlighting_NoWordDiffer(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestModel_ShowsEmptyFileCreation(t *testing.T) {
+	t.Parallel()
+
+	// Create a diff with an empty file creation (no hunks, but Operation=FileAdded)
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "empty.txt",
+				Operation: diffview.FileAdded,
+				// No hunks - this is an empty file
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Empty file should appear with filename and "(empty)" indicator
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasFilename := bytes.Contains(out, []byte("empty.txt"))
+		hasEmptyIndicator := bytes.Contains(out, []byte("(empty)"))
+		return hasFilename && hasEmptyIndicator
+	}, teatest.WithDuration(2*time.Second))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_ShowsEmptyFileDeletion(t *testing.T) {
+	t.Parallel()
+
+	// Create a diff with an empty file deletion (no hunks, but Operation=FileDeleted)
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "deleted.txt",
+				Operation: diffview.FileDeleted,
+				// No hunks - this was an empty file that got deleted
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Empty deleted file should appear with filename and "(empty)" indicator
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasFilename := bytes.Contains(out, []byte("deleted.txt"))
+		hasEmptyIndicator := bytes.Contains(out, []byte("(empty)"))
+		return hasFilename && hasEmptyIndicator
+	}, teatest.WithDuration(2*time.Second))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
