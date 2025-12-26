@@ -24,6 +24,7 @@ type Model struct {
 	renderer         *lipgloss.Renderer
 	languageDetector diffview.LanguageDetector
 	tokenizer        diffview.Tokenizer
+	wordDiffer       diffview.WordDiffer
 	viewport         viewport.Model
 	ready            bool
 	keymap           KeyMap
@@ -41,6 +42,7 @@ type modelConfig struct {
 	theme            diffview.Theme
 	languageDetector diffview.LanguageDetector
 	tokenizer        diffview.Tokenizer
+	wordDiffer       diffview.WordDiffer
 }
 
 // WithRenderer sets a custom lipgloss renderer for the model.
@@ -73,6 +75,13 @@ func WithTokenizer(t diffview.Tokenizer) ModelOption {
 	}
 }
 
+// WithWordDiffer sets the word differ for word-level highlighting.
+func WithWordDiffer(d diffview.WordDiffer) ModelOption {
+	return func(cfg *modelConfig) {
+		cfg.wordDiffer = d
+	}
+}
+
 // NewModel creates a new Model with the given diff.
 // Use WithTheme to set a custom theme, otherwise uses hardcoded defaults.
 func NewModel(diff *diffview.Diff, opts ...ModelOption) Model {
@@ -101,6 +110,7 @@ func NewModel(diff *diffview.Diff, opts ...ModelOption) Model {
 		renderer:         cfg.renderer,
 		languageDetector: cfg.languageDetector,
 		tokenizer:        cfg.tokenizer,
+		wordDiffer:       cfg.wordDiffer,
 		keymap:           DefaultKeyMap(),
 		hunkPositions:    hunkPositions,
 		filePositions:    filePositions,
@@ -143,12 +153,12 @@ func defaultStyles() diffview.Styles {
 			Background: "#5a3d3d", // Stronger red background (~35% blend)
 		},
 		AddedHighlight: diffview.ColorPair{
-			Foreground: "#1e1e2e", // Dark text on bright background
-			Background: "#a6e3a1", // Bright green background
+			Foreground: "#cdd6f4", // Same as code line foreground (neutral)
+			Background: "#3d5a3d", // Same as gutter (~35% blend)
 		},
 		DeletedHighlight: diffview.ColorPair{
-			Foreground: "#1e1e2e", // Dark text on bright background
-			Background: "#f38ba8", // Bright red background
+			Foreground: "#cdd6f4", // Same as code line foreground (neutral)
+			Background: "#5a3d3d", // Same as gutter (~35% blend)
 		},
 	}
 }
@@ -292,6 +302,7 @@ func (m Model) renderContent() string {
 		width:            m.width,
 		languageDetector: m.languageDetector,
 		tokenizer:        m.tokenizer,
+		wordDiffer:       m.wordDiffer,
 	})
 }
 
@@ -518,6 +529,7 @@ type renderConfig struct {
 	width            int
 	languageDetector diffview.LanguageDetector
 	tokenizer        diffview.Tokenizer
+	wordDiffer       diffview.WordDiffer
 }
 
 // renderDiff converts a Diff to a styled string.
@@ -544,6 +556,8 @@ func renderDiff(cfg renderConfig) string {
 	lineNumStyle := styleFromColorPair(styles.LineNumber, renderer)
 	addedGutterStyle := styleFromColorPair(styles.AddedGutter, renderer)
 	deletedGutterStyle := styleFromColorPair(styles.DeletedGutter, renderer)
+	addedHighlightStyle := styleFromColorPair(styles.AddedHighlight, renderer)
+	deletedHighlightStyle := styleFromColorPair(styles.DeletedHighlight, renderer)
 
 	var sb strings.Builder
 	for _, file := range diff.Files {
@@ -587,18 +601,24 @@ func renderDiff(cfg renderConfig) string {
 			sb.WriteString(hunkHeaderStyle.Render(header))
 			sb.WriteString("\n")
 
+			// Compute word diff segments for paired lines (delete followed by add)
+			lineSegments := computeLinePairSegments(hunk.Lines, cfg.wordDiffer)
+
 			// Render lines with gutter and prefixes
-			for _, line := range hunk.Lines {
+			for i, line := range hunk.Lines {
 				// Line number gutter with diff-aware styling
 				var gutterStyle lipgloss.Style
 				var lineStyle lipgloss.Style
+				var highlightStyle lipgloss.Style
 				switch line.Type {
 				case diffview.LineAdded:
 					gutterStyle = addedGutterStyle
 					lineStyle = addedStyle
+					highlightStyle = addedHighlightStyle
 				case diffview.LineDeleted:
 					gutterStyle = deletedGutterStyle
 					lineStyle = deletedStyle
+					highlightStyle = deletedHighlightStyle
 				default:
 					gutterStyle = lineNumStyle
 					lineStyle = contextStyle
@@ -613,34 +633,42 @@ func renderDiff(cfg renderConfig) string {
 				lineContent := strings.TrimSuffix(line.Content, "\n")
 				fullLine := prefix + lineContent
 
-				// Try to tokenize for syntax highlighting
-				var tokens []diffview.Token
-				if cfg.tokenizer != nil && language != "" {
-					tokens = cfg.tokenizer.Tokenize(language, lineContent)
-				}
+				// Check if this line has word-level diff segments
+				segments := lineSegments[i]
 
 				var styledLine string
-				if tokens != nil {
-					// Render with syntax highlighting (prefix + tokens)
-					var colors diffview.ColorPair
-					switch line.Type {
-					case diffview.LineAdded:
-						colors = styles.Added
-					case diffview.LineDeleted:
-						colors = styles.Deleted
-					default:
-						colors = styles.Context
-					}
-					styledLine = renderLineWithTokens(prefix, tokens, colors, renderer, width)
+				if segments != nil {
+					// Render with word-level highlighting
+					styledLine = renderLineWithSegments(prefix, segments, lineStyle, highlightStyle, width)
 				} else {
-					// Plain rendering - entire line including prefix
-					switch line.Type {
-					case diffview.LineAdded:
-						styledLine = addedStyle.Render(padLine(fullLine, width))
-					case diffview.LineDeleted:
-						styledLine = deletedStyle.Render(padLine(fullLine, width))
-					default:
-						styledLine = contextStyle.Render(fullLine)
+					// Try to tokenize for syntax highlighting
+					var tokens []diffview.Token
+					if cfg.tokenizer != nil && language != "" {
+						tokens = cfg.tokenizer.Tokenize(language, lineContent)
+					}
+
+					if tokens != nil {
+						// Render with syntax highlighting (prefix + tokens)
+						var colors diffview.ColorPair
+						switch line.Type {
+						case diffview.LineAdded:
+							colors = styles.Added
+						case diffview.LineDeleted:
+							colors = styles.Deleted
+						default:
+							colors = styles.Context
+						}
+						styledLine = renderLineWithTokens(prefix, tokens, colors, renderer, width)
+					} else {
+						// Plain rendering - entire line including prefix
+						switch line.Type {
+						case diffview.LineAdded:
+							styledLine = addedStyle.Render(padLine(fullLine, width))
+						case diffview.LineDeleted:
+							styledLine = deletedStyle.Render(padLine(fullLine, width))
+						default:
+							styledLine = contextStyle.Render(fullLine)
+						}
 					}
 				}
 				sb.WriteString(styledLine)
@@ -648,6 +676,129 @@ func renderDiff(cfg renderConfig) string {
 			}
 		}
 	}
+	return sb.String()
+}
+
+// computeLinePairSegments identifies paired delete/add lines and computes word-level diff segments.
+// Returns a map from line index to segments. Lines without word-level diffs have nil segments.
+// Only applies word-level highlighting when there's meaningful shared content (>30% unchanged).
+//
+// Handles both simple pairs (one delete followed by one add) and runs of consecutive
+// deletes followed by consecutive adds (pairs them 1:1 in order).
+func computeLinePairSegments(lines []diffview.Line, wordDiffer diffview.WordDiffer) map[int][]diffview.Segment {
+	if wordDiffer == nil {
+		return nil
+	}
+
+	result := make(map[int][]diffview.Segment)
+
+	// Find runs of consecutive deleted lines followed by runs of added lines
+	for i := 0; i < len(lines); i++ {
+		if lines[i].Type != diffview.LineDeleted {
+			continue
+		}
+
+		// Found start of a delete run - count consecutive deletes
+		deleteStart := i
+		deleteEnd := i
+		for deleteEnd < len(lines) && lines[deleteEnd].Type == diffview.LineDeleted {
+			deleteEnd++
+		}
+
+		// Check if immediately followed by added lines
+		if deleteEnd >= len(lines) || lines[deleteEnd].Type != diffview.LineAdded {
+			i = deleteEnd - 1 // Skip to end of delete run
+			continue
+		}
+
+		// Count consecutive adds
+		addStart := deleteEnd
+		addEnd := addStart
+		for addEnd < len(lines) && lines[addEnd].Type == diffview.LineAdded {
+			addEnd++
+		}
+
+		// Pair up deletes and adds 1:1
+		deleteCount := deleteEnd - deleteStart
+		addCount := addEnd - addStart
+		pairCount := deleteCount
+		if addCount < pairCount {
+			pairCount = addCount
+		}
+
+		for j := 0; j < pairCount; j++ {
+			delIdx := deleteStart + j
+			addIdx := addStart + j
+
+			oldContent := strings.TrimSuffix(lines[delIdx].Content, "\n")
+			newContent := strings.TrimSuffix(lines[addIdx].Content, "\n")
+			oldSegs, newSegs := wordDiffer.Diff(oldContent, newContent)
+
+			// Only use word-level highlighting if there's meaningful shared content.
+			if hasSignificantUnchangedContent(oldSegs) && hasSignificantUnchangedContent(newSegs) {
+				result[delIdx] = oldSegs
+				result[addIdx] = newSegs
+			}
+		}
+
+		i = addEnd - 1 // Skip to end of add run
+	}
+
+	return result
+}
+
+// hasSignificantUnchangedContent checks if segments have enough unchanged content
+// to make word-level highlighting useful (at least 30% unchanged).
+func hasSignificantUnchangedContent(segments []diffview.Segment) bool {
+	if len(segments) == 0 {
+		return false
+	}
+
+	var unchangedLen, totalLen int
+	for _, seg := range segments {
+		segLen := len(seg.Text)
+		totalLen += segLen
+		if !seg.Changed {
+			unchangedLen += segLen
+		}
+	}
+
+	if totalLen == 0 {
+		return false
+	}
+
+	// Require at least 30% unchanged content for word-level diff to be useful
+	return float64(unchangedLen)/float64(totalLen) >= 0.30
+}
+
+// renderLineWithSegments renders a line with word-level diff highlighting.
+// Unchanged segments use baseStyle, changed segments use highlightStyle.
+func renderLineWithSegments(prefix string, segments []diffview.Segment, baseStyle, highlightStyle lipgloss.Style, width int) string {
+	var sb strings.Builder
+
+	// Render prefix with base style
+	sb.WriteString(baseStyle.Render(prefix))
+
+	// Render each segment with appropriate style
+	for _, seg := range segments {
+		if seg.Changed {
+			sb.WriteString(highlightStyle.Render(seg.Text))
+		} else {
+			sb.WriteString(baseStyle.Render(seg.Text))
+		}
+	}
+
+	// Calculate current length and pad if needed
+	currentLen := lipgloss.Width(prefix)
+	for _, seg := range segments {
+		currentLen += lipgloss.Width(seg.Text)
+	}
+
+	if currentLen < width {
+		padding := strings.Repeat(" ", width-currentLen)
+		sb.WriteString(baseStyle.Render(padding))
+	}
+
 	return sb.String()
 }
 
@@ -814,6 +965,7 @@ type Viewer struct {
 	theme            diffview.Theme
 	languageDetector diffview.LanguageDetector
 	tokenizer        diffview.Tokenizer
+	wordDiffer       diffview.WordDiffer
 	programOpts      []tea.ProgramOption
 }
 
@@ -842,6 +994,13 @@ func WithViewerTokenizer(t diffview.Tokenizer) ViewerOption {
 	}
 }
 
+// WithViewerWordDiffer sets the word differ for word-level highlighting.
+func WithViewerWordDiffer(d diffview.WordDiffer) ViewerOption {
+	return func(v *Viewer) {
+		v.wordDiffer = d
+	}
+}
+
 // NewViewer creates a new Viewer with the given theme.
 func NewViewer(theme diffview.Theme, opts ...ViewerOption) *Viewer {
 	v := &Viewer{theme: theme}
@@ -857,6 +1016,7 @@ func (v *Viewer) View(ctx context.Context, diff *diffview.Diff) error {
 		WithTheme(v.theme),
 		WithLanguageDetector(v.languageDetector),
 		WithTokenizer(v.tokenizer),
+		WithWordDiffer(v.wordDiffer),
 	)
 	opts := []tea.ProgramOption{
 		tea.WithAltScreen(),
