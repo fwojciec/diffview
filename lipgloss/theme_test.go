@@ -128,36 +128,42 @@ func TestNewTheme(t *testing.T) {
 		assert.Equal(t, palette, theme.Palette())
 	})
 
-	t.Run("derives added highlight with bright background", func(t *testing.T) {
+	t.Run("derives added highlight with gutter-intensity background", func(t *testing.T) {
 		t.Parallel()
 
 		palette := diffview.Palette{
 			Background: "#1e1e2e",
+			Foreground: "#cdd6f4",
 			Added:      "#00ff00",
 		}
 
 		theme := lipgloss.NewTheme(palette)
 		styles := theme.Styles()
 
-		// Highlight uses added color as background with contrasting foreground
-		assert.Equal(t, "#00ff00", styles.AddedHighlight.Background)
-		assert.Equal(t, "#1e1e2e", styles.AddedHighlight.Foreground)
+		// GitHub-style: highlight uses same foreground as line, gutter-intensity background (35% blend)
+		assert.Equal(t, "#cdd6f4", styles.AddedHighlight.Foreground) // Same as line text
+		// Background is ~35% blend of green into dark background
+		assert.NotEmpty(t, styles.AddedHighlight.Background)
+		assert.Equal(t, styles.AddedGutter.Background, styles.AddedHighlight.Background) // Same as gutter
 	})
 
-	t.Run("derives deleted highlight with bright background", func(t *testing.T) {
+	t.Run("derives deleted highlight with gutter-intensity background", func(t *testing.T) {
 		t.Parallel()
 
 		palette := diffview.Palette{
 			Background: "#1e1e2e",
+			Foreground: "#cdd6f4",
 			Deleted:    "#ff0000",
 		}
 
 		theme := lipgloss.NewTheme(palette)
 		styles := theme.Styles()
 
-		// Highlight uses deleted color as background with contrasting foreground
-		assert.Equal(t, "#ff0000", styles.DeletedHighlight.Background)
-		assert.Equal(t, "#1e1e2e", styles.DeletedHighlight.Foreground)
+		// GitHub-style: highlight uses same foreground as line, gutter-intensity background (35% blend)
+		assert.Equal(t, "#cdd6f4", styles.DeletedHighlight.Foreground) // Same as line text
+		// Background is ~35% blend of red into dark background
+		assert.NotEmpty(t, styles.DeletedHighlight.Background)
+		assert.Equal(t, styles.DeletedGutter.Background, styles.DeletedHighlight.Background) // Same as gutter
 	})
 }
 

@@ -70,12 +70,12 @@ func stylesFromPalette(p diffview.Palette) diffview.Styles {
 			Background: blendWithBackground(p.Deleted, p.Background, 0.35),
 		},
 		AddedHighlight: diffview.ColorPair{
-			Foreground: string(p.Background),
-			Background: string(p.Added),
+			Foreground: string(p.Foreground),                             // Same as code line foreground (neutral)
+			Background: blendWithBackground(p.Added, p.Background, 0.35), // Same as gutter
 		},
 		DeletedHighlight: diffview.ColorPair{
-			Foreground: string(p.Background),
-			Background: string(p.Deleted),
+			Foreground: string(p.Foreground),                               // Same as code line foreground (neutral)
+			Background: blendWithBackground(p.Deleted, p.Background, 0.35), // Same as gutter
 		},
 	}
 }
