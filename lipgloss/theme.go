@@ -80,9 +80,9 @@ func stylesFromPalette(p diffview.Palette) diffview.Styles {
 	}
 }
 
-// DefaultTheme returns the default theme (Catppuccin Mocha, dark background optimized).
+// DefaultTheme returns the default theme (GitHub-inspired dark theme).
 func DefaultTheme() *Theme {
-	return NewTheme(mochaPalette())
+	return NewTheme(githubDarkPalette())
 }
 
 // TestTheme returns a theme with predictable, pure colors for testing.
@@ -122,34 +122,35 @@ func testPalette() diffview.Palette {
 	}
 }
 
-// mochaPalette returns the Catppuccin Mocha color palette.
-func mochaPalette() diffview.Palette {
+// githubDarkPalette returns a GitHub-inspired dark theme color palette.
+// Based on GitHub's Primer design system dark mode colors.
+func githubDarkPalette() diffview.Palette {
 	return diffview.Palette{
-		// Base colors
-		Background: "#1e1e2e",
-		Foreground: "#cdd6f4",
+		// Base colors - GitHub dark mode canvas
+		Background: "#0d1117",
+		Foreground: "#e6edf3",
 
-		// Diff colors
-		Added:    "#a6e3a1",
-		Deleted:  "#f38ba8",
-		Modified: "#f9e2af",
-		Context:  "#6c7086",
+		// Diff colors - GitHub success/danger semantic colors
+		Added:    "#3fb950", // GitHub green for additions
+		Deleted:  "#f85149", // GitHub red for deletions
+		Modified: "#d29922", // GitHub warning/modified yellow
+		Context:  "#8b949e", // GitHub muted foreground
 
-		// Syntax highlighting colors
-		Keyword:     "#cba6f7",
-		String:      "#a6e3a1",
-		Number:      "#fab387",
-		Comment:     "#6c7086",
-		Operator:    "#89dceb",
-		Function:    "#89b4fa",
-		Type:        "#f9e2af",
-		Constant:    "#fab387",
-		Punctuation: "#9399b2",
+		// Syntax highlighting colors - GitHub dark mode syntax
+		Keyword:     "#ff7b72", // Red for keywords
+		String:      "#a5d6ff", // Light blue for strings
+		Number:      "#79c0ff", // Blue for numbers
+		Comment:     "#8b949e", // Muted for comments
+		Operator:    "#ff7b72", // Red for operators
+		Function:    "#d2a8ff", // Purple for functions
+		Type:        "#ffa657", // Orange for types
+		Constant:    "#79c0ff", // Blue for constants
+		Punctuation: "#8b949e", // Muted for punctuation
 
-		// UI colors
-		UIBackground: "#313244",
-		UIForeground: "#a6adc8",
-		UIAccent:     "#89b4fa",
+		// UI colors - GitHub dark mode surfaces
+		UIBackground: "#161b22", // Elevated surface
+		UIForeground: "#8b949e", // Muted text
+		UIAccent:     "#58a6ff", // GitHub blue accent
 	}
 }
 

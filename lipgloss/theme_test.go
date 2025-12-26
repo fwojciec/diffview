@@ -238,15 +238,15 @@ func TestDefaultTheme(t *testing.T) {
 		assert.Equal(t, string(palette.Context), styles.Context.Foreground)
 	})
 
-	t.Run("uses Catppuccin Mocha colors", func(t *testing.T) {
+	t.Run("uses GitHub-inspired dark colors", func(t *testing.T) {
 		t.Parallel()
 
 		theme := lipgloss.DefaultTheme()
 		palette := theme.Palette()
 
-		// Catppuccin Mocha base colors
-		assert.Equal(t, diffview.Color("#1e1e2e"), palette.Background)
-		assert.Equal(t, diffview.Color("#cdd6f4"), palette.Foreground)
+		// GitHub dark mode base colors
+		assert.Equal(t, diffview.Color("#0d1117"), palette.Background)
+		assert.Equal(t, diffview.Color("#e6edf3"), palette.Foreground)
 	})
 }
 

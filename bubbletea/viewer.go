@@ -117,80 +117,81 @@ func NewModel(diff *diffview.Diff, opts ...ModelOption) Model {
 	}
 }
 
-// defaultStyles returns the default dark theme styles.
+// defaultStyles returns the default dark theme styles (GitHub-inspired).
+// These values should match what stylesFromPalette(githubDarkPalette()) produces.
 func defaultStyles() diffview.Styles {
 	return diffview.Styles{
 		Added: diffview.ColorPair{
-			Foreground: "#cdd6f4", // Normal text (neutral)
-			Background: "#2d3f2d", // Subtle green background (~15% blend)
+			Foreground: "#e6edf3", // Normal text (neutral)
+			Background: "#142a1f", // Subtle green background (15% blend of #3fb950 with #0d1117)
 		},
 		Deleted: diffview.ColorPair{
-			Foreground: "#cdd6f4", // Normal text (neutral)
-			Background: "#3f2d2d", // Subtle red background (~15% blend)
+			Foreground: "#e6edf3", // Normal text (neutral)
+			Background: "#301a1e", // Subtle red background (15% blend of #f85149 with #0d1117)
 		},
 		Context: diffview.ColorPair{
-			Foreground: "#cdd6f4", // Light gray
+			Foreground: "#8b949e", // Muted foreground (Context color)
 		},
 		HunkHeader: diffview.ColorPair{
-			Foreground: "#89b4fa", // Blue
+			Foreground: "#58a6ff", // Blue accent (UIAccent)
 		},
 		FileHeader: diffview.ColorPair{
-			Foreground: "#f9e2af", // Yellow
-			Background: "#313244", // Dark surface
+			Foreground: "#d29922", // Modified/warning yellow
+			Background: "#161b22", // Elevated surface (UIBackground)
 		},
 		FileSeparator: diffview.ColorPair{
-			Foreground: "#45475a", // Muted gray (subtle)
+			Foreground: "#8b949e", // Muted text (UIForeground)
 		},
 		LineNumber: diffview.ColorPair{
-			Foreground: "#6c7086", // Muted gray
+			Foreground: "#8b949e", // Muted foreground (Context color)
 		},
 		AddedGutter: diffview.ColorPair{
-			Foreground: "#cdd6f4", // Same as code line foreground
-			Background: "#3d5a3d", // Stronger green background (~35% blend)
+			Foreground: "#e6edf3", // Same as code line foreground
+			Background: "#1e4b2a", // Stronger green background (35% blend of #3fb950 with #0d1117)
 		},
 		DeletedGutter: diffview.ColorPair{
-			Foreground: "#cdd6f4", // Same as code line foreground
-			Background: "#5a3d3d", // Stronger red background (~35% blend)
+			Foreground: "#e6edf3", // Same as code line foreground
+			Background: "#5f2728", // Stronger red background (35% blend of #f85149 with #0d1117)
 		},
 		AddedHighlight: diffview.ColorPair{
-			Foreground: "#cdd6f4", // Same as code line foreground (neutral)
-			Background: "#3d5a3d", // Same as gutter (~35% blend)
+			Foreground: "#e6edf3", // Same as code line foreground (neutral)
+			Background: "#1e4b2a", // Same as gutter (35% blend)
 		},
 		DeletedHighlight: diffview.ColorPair{
-			Foreground: "#cdd6f4", // Same as code line foreground (neutral)
-			Background: "#5a3d3d", // Same as gutter (~35% blend)
+			Foreground: "#e6edf3", // Same as code line foreground (neutral)
+			Background: "#5f2728", // Same as gutter (35% blend)
 		},
 	}
 }
 
-// defaultPalette returns the default palette (Catppuccin Mocha).
+// defaultPalette returns the default palette (GitHub-inspired dark).
 func defaultPalette() diffview.Palette {
 	return diffview.Palette{
-		// Base colors
-		Background: "#1e1e2e",
-		Foreground: "#cdd6f4",
+		// Base colors - GitHub dark mode canvas
+		Background: "#0d1117",
+		Foreground: "#e6edf3",
 
-		// Diff colors
-		Added:    "#a6e3a1",
-		Deleted:  "#f38ba8",
-		Modified: "#f9e2af",
-		Context:  "#6c7086",
+		// Diff colors - GitHub success/danger semantic colors
+		Added:    "#3fb950",
+		Deleted:  "#f85149",
+		Modified: "#d29922",
+		Context:  "#8b949e",
 
-		// Syntax highlighting colors
-		Keyword:     "#cba6f7",
-		String:      "#a6e3a1",
-		Number:      "#fab387",
-		Comment:     "#6c7086",
-		Operator:    "#89dceb",
-		Function:    "#89b4fa",
-		Type:        "#f9e2af",
-		Constant:    "#fab387",
-		Punctuation: "#9399b2",
+		// Syntax highlighting colors - GitHub dark mode syntax
+		Keyword:     "#ff7b72",
+		String:      "#a5d6ff",
+		Number:      "#79c0ff",
+		Comment:     "#8b949e",
+		Operator:    "#ff7b72",
+		Function:    "#d2a8ff",
+		Type:        "#ffa657",
+		Constant:    "#79c0ff",
+		Punctuation: "#8b949e",
 
-		// UI colors
-		UIBackground: "#313244",
-		UIForeground: "#a6adc8",
-		UIAccent:     "#89b4fa",
+		// UI colors - GitHub dark mode surfaces
+		UIBackground: "#161b22",
+		UIForeground: "#8b949e",
+		UIAccent:     "#58a6ff",
 	}
 }
 
