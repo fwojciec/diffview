@@ -73,6 +73,21 @@ func TestTokenize(t *testing.T) {
 			input:    "'x'",
 			expected: []string{"'x'"},
 		},
+		{
+			name:     "escaped quote in double quoted string",
+			input:    `"say \"hello\""`,
+			expected: []string{`"say \"hello\""`},
+		},
+		{
+			name:     "escaped quote in single quoted string",
+			input:    `'it\'s'`,
+			expected: []string{`'it\'s'`},
+		},
+		{
+			name:     "escaped backslash in string",
+			input:    `"path\\to\\file"`,
+			expected: []string{`"path\\to\\file"`},
+		},
 
 		// Operators
 		{
@@ -167,6 +182,33 @@ func TestTokenize(t *testing.T) {
 			name:     "decorator syntax",
 			input:    "@decorator",
 			expected: []string{"@", "decorator"},
+		},
+
+		// UTF-8 multi-byte characters
+		{
+			name:     "emoji single character",
+			input:    "👋",
+			expected: []string{"👋"},
+		},
+		{
+			name:     "emoji in context",
+			input:    "hello 👋 world",
+			expected: []string{"hello", " ", "👋", " ", "world"},
+		},
+		{
+			name:     "multiple emojis",
+			input:    "👋🌍🎉",
+			expected: []string{"👋", "🌍", "🎉"},
+		},
+		{
+			name:     "chinese characters",
+			input:    "你好",
+			expected: []string{"你", "好"},
+		},
+		{
+			name:     "mixed unicode and ascii",
+			input:    "café",
+			expected: []string{"caf", "é"},
 		},
 	}
 

@@ -2,6 +2,7 @@ package worddiff
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/fwojciec/diffview"
 )
@@ -54,24 +55,34 @@ func (d *Differ) Tokenize(s string) []string {
 			tokens = append(tokens, s[start:i])
 
 		case c == '"':
-			// Double-quoted string literal
+			// Double-quoted string literal (handles backslash escapes)
 			i++
-			for i < len(s) && s[i] != '"' {
+			for i < len(s) {
+				if s[i] == '\\' && i+1 < len(s) {
+					i += 2 // skip escaped character
+					continue
+				}
+				if s[i] == '"' {
+					i++ // consume closing quote
+					break
+				}
 				i++
-			}
-			if i < len(s) {
-				i++ // consume closing quote
 			}
 			tokens = append(tokens, s[start:i])
 
 		case c == '\'':
-			// Single-quoted string literal
+			// Single-quoted string literal (handles backslash escapes)
 			i++
-			for i < len(s) && s[i] != '\'' {
+			for i < len(s) {
+				if s[i] == '\\' && i+1 < len(s) {
+					i += 2 // skip escaped character
+					continue
+				}
+				if s[i] == '\'' {
+					i++ // consume closing quote
+					break
+				}
 				i++
-			}
-			if i < len(s) {
-				i++ // consume closing quote
 			}
 			tokens = append(tokens, s[start:i])
 
@@ -98,16 +109,8 @@ func (d *Differ) Tokenize(s string) []string {
 
 		default:
 			// Single character (catch-all for UTF-8 and other chars)
-			// Handle multi-byte UTF-8 characters
-			if c >= 0x80 {
-				// UTF-8 multi-byte character
-				i++
-				for i < len(s) && s[i] >= 0x80 && s[i] < 0xC0 {
-					i++ // consume continuation bytes
-				}
-			} else {
-				i++
-			}
+			_, size := utf8.DecodeRuneInString(s[i:])
+			i += size
 			tokens = append(tokens, s[start:i])
 		}
 	}
