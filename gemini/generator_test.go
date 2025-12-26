@@ -99,6 +99,24 @@ func TestGenerator_Generate_ReturnsErrorOnInvalidJSON(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestGenerator_Generate_ReturnsErrorOnNilResponse(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &gemini.MockGenerativeClient{
+		GenerateContentFn: func(ctx context.Context, model string, contents []*gemini.Content, config *gemini.GenerateContentConfig) (*gemini.GenerateContentResponse, error) {
+			return nil, nil
+		},
+	}
+
+	gen := gemini.NewGenerator(mockClient, "gemini-2.0-flash")
+	hunks := []diffview.AnnotatedHunk{{ID: "h1"}}
+
+	_, err := gen.Generate(context.Background(), hunks)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil response")
+}
+
 func TestBuildPrompt_IncludesHunkIDs(t *testing.T) {
 	t.Parallel()
 

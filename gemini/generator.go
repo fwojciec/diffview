@@ -37,6 +37,9 @@ func (g *Generator) Generate(ctx context.Context, hunks []diffview.AnnotatedHunk
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, fmt.Errorf("gemini: returned nil response")
+	}
 
 	var analysis diffview.DiffAnalysis
 	if err := json.Unmarshal([]byte(resp.Text), &analysis); err != nil {
