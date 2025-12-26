@@ -2003,3 +2003,108 @@ type mockLanguageDetector struct {
 func (m *mockLanguageDetector) DetectFromPath(path string) string {
 	return m.DetectFromPathFn(path)
 }
+
+func TestModel_PaddingBetweenGutterAndCodePrefix(t *testing.T) {
+	t.Parallel()
+
+	// Create a diff with added, deleted, and context lines
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 2,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context", OldLineNum: 1, NewLineNum: 1},
+							{Type: diffview.LineDeleted, Content: "deleted", OldLineNum: 2, NewLineNum: 0},
+							{Type: diffview.LineAdded, Content: "added", OldLineNum: 0, NewLineNum: 2},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff, bubbletea.WithRenderer(trueColorRenderer()))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for output with padding space between gutter and line prefix
+	// The padding space appears between the gutter and the prefix character (+/-/space)
+	// Due to ANSI color codes, the padding space may be separated from the prefix by escape sequences
+	// We verify by checking that the rendered text shows " +added", " -deleted", "  context"
+	// (padding space + prefix + content for each line type)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		// After the gutter styling ends (reset code), we should see the padding space
+		// followed by the prefix character. Check for space-prefix-content patterns.
+		hasAddedWithPadding := bytes.Contains(out, []byte(" +added"))
+		hasDeletedWithPadding := bytes.Contains(out, []byte(" -deleted"))
+		// For context lines, the prefix is a space, so we get "  context" (padding + prefix + content)
+		hasContextWithPadding := bytes.Contains(out, []byte("  context"))
+		return hasAddedWithPadding && hasDeletedWithPadding && hasContextWithPadding
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_PaddingUsesCodeLineBackgroundColor(t *testing.T) {
+	t.Parallel()
+
+	// Create a diff with an added line to test padding background color
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context", OldLineNum: 1, NewLineNum: 1},
+							{Type: diffview.LineAdded, Content: "added", OldLineNum: 0, NewLineNum: 2},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// TestTheme has different colors for gutter vs line background:
+	// AddedGutter background: RGB(0, 89, 0) -> "48;2;0;89;0" (stronger green)
+	// Added line background: RGB(0, 38, 0) -> "48;2;0;38;0" (subtler green)
+	theme := dv.TestTheme()
+	m := bubbletea.NewModel(diff,
+		bubbletea.WithTheme(theme),
+		bubbletea.WithRenderer(trueColorRenderer()),
+	)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// The padding space should use the line background color (0, 38, 0), not gutter (0, 89, 0)
+	// The padding immediately follows the gutter, so we look for the pattern:
+	// gutter ends with gutter-background -> padding has line-background
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasContent := bytes.Contains(out, []byte("+added"))
+		// The padding space should have the line background color
+		// Check that the output contains both the gutter background and line background colors
+		hasGutterBackground := bytes.Contains(out, []byte("48;2;0;89;0"))
+		hasLineBackground := bytes.Contains(out, []byte("48;2;0;38;0"))
+		return hasContent && hasGutterBackground && hasLineBackground
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}

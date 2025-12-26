@@ -134,8 +134,8 @@ Only proceed to step 8 when `make validate` passes cleanly.
 Before finishing, get a fresh perspective on the implementation. This is an internal feedback loop to catch issues before committing—not a formal PR review (that happens after `/finish-task`).
 
 **Launch both reviews in parallel:**
-1. `Skill(code-review:code-review)` - correctness, style, bugs (review uncommitted changes, not a PR)
-2. `Task(subagent_type="beads-review")` - forward compatibility with downstream work
+1. `Skill(superpowers:requesting-code-review)` - correctness, style, bugs (review uncommitted changes, not a PR)
+2. `Task(subagent_type="beads-review")` - forward compatibility with downstream work and CLAUDE.md standards
 
 Wait for both to complete.
 

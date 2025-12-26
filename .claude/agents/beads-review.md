@@ -29,11 +29,27 @@ For each downstream issue found, run `bd show <downstream-id>` to understand its
 git diff main...HEAD
 ```
 
-### 3. Evaluate Against Criteria
+### 3. Load Project Standards
 
-Review the diff using the structural checklist and YAGNI distinction below.
+Read the project's `CLAUDE.md` file to understand codebase-specific standards:
 
-### 4. Return Structured Verdict
+```bash
+cat CLAUDE.md
+```
+
+Pay particular attention to:
+- Architecture patterns (Ben Johnson layout, package structure)
+- Test philosophy (TDD, external test packages, parallel tests, assertions)
+- Linting rules (no global state, error checking)
+
+### 4. Evaluate Against Criteria
+
+Review the diff using:
+1. The structural checklist below
+2. YAGNI distinction below
+3. **Project standards from CLAUDE.md** (test conventions, architectural patterns, linting expectations)
+
+### 5. Return Structured Verdict
 
 Your output MUST follow this format:
 
@@ -63,6 +79,7 @@ Actual bugs or structural violations IN THE CURRENT IMPLEMENTATION:
 - Violations of codebase patterns (e.g., Ben Johnson layout)
 - Assumptions that conflict with downstream requirements
 - Missing seams that downstream explicitly needs and current scope includes
+- **CLAUDE.md violations**: tests not in external packages, missing `t.Parallel()`, interface checks in test files, etc.
 
 ### B. Specification Gaps (require issue updates)
 

@@ -597,15 +597,22 @@ func renderDiff(cfg renderConfig) string {
 			for _, line := range hunk.Lines {
 				// Line number gutter with diff-aware styling
 				var gutterStyle lipgloss.Style
+				var lineStyle lipgloss.Style
 				switch line.Type {
 				case diffview.LineAdded:
 					gutterStyle = addedGutterStyle
+					lineStyle = addedStyle
 				case diffview.LineDeleted:
 					gutterStyle = deletedGutterStyle
+					lineStyle = deletedStyle
 				default:
 					gutterStyle = lineNumStyle
+					lineStyle = contextStyle
 				}
 				sb.WriteString(formatGutter(line.OldLineNum, line.NewLineNum, gutterWidth, gutterStyle))
+
+				// Add padding space between gutter and code prefix, styled with code line's background
+				sb.WriteString(lineStyle.Render(" "))
 
 				// Get prefix and content
 				prefix := linePrefixFor(line.Type)
