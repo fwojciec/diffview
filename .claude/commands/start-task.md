@@ -133,8 +133,8 @@ Only proceed to step 8 when `make validate` passes cleanly.
 
 Before finishing, get independent perspectives on the implementation. Launch two review subagents in parallel—each provides a "second opinion" from a different angle, and running them concurrently saves time.
 
-**Launch both reviews in parallel using a single message with multiple tool calls:**
-1. `Skill(code-review:code-review)` - correctness, style, bugs (review uncommitted changes, not a PR)
+**Launch both reviews in parallel using a single message with multiple Task calls:**
+1. `Task(subagent_type="superpowers:code-reviewer")` - correctness, style, bugs (has conversation context for second opinion)
 2. `Task(subagent_type="beads-review")` - forward compatibility with downstream work
 
 Wait for both to complete. The value is in getting two independent assessments—issues flagged by both reviewers deserve extra attention.
