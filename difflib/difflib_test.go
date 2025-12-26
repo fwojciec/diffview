@@ -305,3 +305,42 @@ func TestDiff(t *testing.T) {
 		assert.Equal(t, []diffview.Segment{{Text: "getUserEmail", Changed: true}}, newSegs)
 	})
 }
+
+func BenchmarkDiffer_Diff(b *testing.B) {
+	d := difflib.NewDiffer()
+
+	b.Run("identical", func(b *testing.B) {
+		// Fast path: identical strings should skip diffing
+		line := "func (s *Server) handleRequest(ctx context.Context, req *Request) (*Response, error)"
+		for b.Loop() {
+			d.Diff(line, line)
+		}
+	})
+
+	b.Run("short_similar", func(b *testing.B) {
+		// Common case: small change in otherwise similar lines
+		oldLine := "return x + 1"
+		newLine := "return x + 2"
+		for b.Loop() {
+			d.Diff(oldLine, newLine)
+		}
+	})
+
+	b.Run("short_different", func(b *testing.B) {
+		// Low similarity: completely different content
+		oldLine := "hello world"
+		newLine := "12345 abcde"
+		for b.Loop() {
+			d.Diff(oldLine, newLine)
+		}
+	})
+
+	b.Run("long_line", func(b *testing.B) {
+		// Realistic long code line with minor change
+		oldLine := `	result, err := s.repository.FindUserByEmailAndOrganization(ctx, email, orgID, options)`
+		newLine := `	result, err := s.repository.FindUserByEmailAndOrganization(ctx, email, orgID, opts)`
+		for b.Loop() {
+			d.Diff(oldLine, newLine)
+		}
+	})
+}
