@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/bubbletea"
+	dv "github.com/fwojciec/diffview/lipgloss"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1562,23 +1563,26 @@ func TestModel_HighlightsWordLevelChanges(t *testing.T) {
 		},
 	}
 
-	// Use WithRenderer to force true color output
-	m := bubbletea.NewModel(diff, bubbletea.WithRenderer(trueColorRenderer()))
+	// Use TestTheme with predictable colors and true color renderer
+	m := bubbletea.NewModel(diff,
+		bubbletea.WithTheme(dv.TestTheme()),
+		bubbletea.WithRenderer(trueColorRenderer()),
+	)
 	tm := teatest.NewTestModel(t, m,
 		teatest.WithInitialTermSize(80, 24),
 	)
 
 	// Wait for content to render with word-level highlighting
 	// The changed words "world" and "universe" should have highlight background colors
-	// AddedHighlight background: #a6e3a1 = RGB(166, 227, 161) -> "48;2;166;227;161"
-	// DeletedHighlight background: #f38ba8 = RGB(243, 139, 168) -> "48;2;243;139;168"
+	// TestTheme AddedHighlight background: #00ff00 = RGB(0, 255, 0) -> "48;2;0;255;0"
+	// TestTheme DeletedHighlight background: #ff0000 = RGB(255, 0, 0) -> "48;2;255;0;0"
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		// Check that the content appears
 		hasWorld := bytes.Contains(out, []byte("world"))
 		hasUniverse := bytes.Contains(out, []byte("universe"))
 		// Check for the highlight background colors (true color format: 48;2;R;G;B)
-		hasAddedHighlight := bytes.Contains(out, []byte("48;2;166;227;161"))
-		hasDeletedHighlight := bytes.Contains(out, []byte("48;2;243;139;168"))
+		hasAddedHighlight := bytes.Contains(out, []byte("48;2;0;255;0"))
+		hasDeletedHighlight := bytes.Contains(out, []byte("48;2;255;0;0"))
 		return hasWorld && hasUniverse && hasAddedHighlight && hasDeletedHighlight
 	})
 
@@ -1716,7 +1720,7 @@ func TestModel_RendersFileHeaderWithStats(t *testing.T) {
 		},
 	}
 
-	m := bubbletea.NewModel(diff)
+	m := bubbletea.NewModel(diff, bubbletea.WithTheme(dv.TestTheme()))
 	tm := teatest.NewTestModel(t, m,
 		teatest.WithInitialTermSize(80, 24),
 	)
@@ -1731,4 +1735,114 @@ func TestModel_RendersFileHeaderWithStats(t *testing.T) {
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_WithTheme(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context"},
+							{Type: diffview.LineAdded, Content: "added"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Use TestTheme which has pure green (#00ff00) for added lines
+	// RGB(0, 255, 0) -> "38;2;0;255;0" for foreground
+	theme := dv.TestTheme()
+	m := bubbletea.NewModel(diff,
+		bubbletea.WithTheme(theme),
+		bubbletea.WithRenderer(trueColorRenderer()),
+	)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// TestTheme uses pure green (#00ff00) for added lines
+	// Should see foreground color code "38;2;0;255;0"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasContent := bytes.Contains(out, []byte("added"))
+		hasGreenForeground := bytes.Contains(out, []byte("38;2;0;255;0"))
+		return hasContent && hasGreenForeground
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_StatusBarUsesThemeUIColors(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath: "a/file.go",
+				NewPath: "b/file.go",
+				Hunks: []diffview.Hunk{
+					{Lines: []diffview.Line{{Type: diffview.LineContext, Content: "content"}}},
+				},
+			},
+		},
+	}
+
+	// TestTheme has UIBackground=#333333 = RGB(51, 51, 51)
+	// The status bar text "file 1/1" should have this background color
+	theme := dv.TestTheme()
+	m := bubbletea.NewModel(diff,
+		bubbletea.WithTheme(theme),
+		bubbletea.WithRenderer(trueColorRenderer()),
+	)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for the model to render and collect output
+	var finalOutput []byte
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		if bytes.Contains(out, []byte("file 1/1")) {
+			finalOutput = out
+			return true
+		}
+		return false
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+
+	// The status bar should use themed colors, which means there should be
+	// color codes immediately before "file 1/1". Previously it used
+	// lipgloss.NewStyle(), which ignored the renderer so the status bar
+	// rendered without colors in tests; this test verifies it now has colors.
+	//
+	// Look for the pattern: background color code followed by "file 1/1"
+	// TestTheme UIBackground is #333333 = RGB(51, 51, 51) -> "48;2;51;51;51"
+	statusBarLine := extractLastLine(string(finalOutput))
+	assert.Contains(t, statusBarLine, "48;2;51;51;51", "status bar should use TestTheme UIBackground color")
+}
+
+// extractLastLine returns the last non-empty line from the output.
+func extractLastLine(s string) string {
+	lines := bytes.Split([]byte(s), []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := bytes.TrimSpace(lines[i])
+		if len(line) > 0 {
+			return string(lines[i])
+		}
+	}
+	return ""
 }

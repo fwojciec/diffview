@@ -21,6 +21,7 @@ var _ diffview.Viewer = (*Viewer)(nil)
 type Model struct {
 	diff          *diffview.Diff
 	styles        diffview.Styles
+	palette       diffview.Palette
 	renderer      *lipgloss.Renderer
 	viewport      viewport.Model
 	ready         bool
@@ -36,6 +37,7 @@ type ModelOption func(*modelConfig)
 
 type modelConfig struct {
 	renderer *lipgloss.Renderer
+	theme    diffview.Theme
 }
 
 // WithRenderer sets a custom lipgloss renderer for the model.
@@ -46,16 +48,30 @@ func WithRenderer(r *lipgloss.Renderer) ModelOption {
 	}
 }
 
-// NewModel creates a new Model with the given diff and default dark theme.
-func NewModel(diff *diffview.Diff, opts ...ModelOption) Model {
-	return NewModelWithStyles(diff, defaultStyles(), opts...)
+// WithTheme sets the theme for the model.
+// If nil is passed, the model uses default styles and palette.
+func WithTheme(t diffview.Theme) ModelOption {
+	return func(cfg *modelConfig) {
+		cfg.theme = t
+	}
 }
 
-// NewModelWithStyles creates a new Model with the given diff and styles.
-func NewModelWithStyles(diff *diffview.Diff, styles diffview.Styles, opts ...ModelOption) Model {
+// NewModel creates a new Model with the given diff.
+// Use WithTheme to set a custom theme, otherwise uses hardcoded defaults.
+func NewModel(diff *diffview.Diff, opts ...ModelOption) Model {
 	cfg := &modelConfig{}
 	for _, opt := range opts {
 		opt(cfg)
+	}
+
+	var styles diffview.Styles
+	var palette diffview.Palette
+	if cfg.theme != nil {
+		styles = cfg.theme.Styles()
+		palette = cfg.theme.Palette()
+	} else {
+		styles = defaultStyles()
+		palette = defaultPalette()
 	}
 
 	// Compute positions eagerly - they don't depend on terminal width
@@ -64,6 +80,7 @@ func NewModelWithStyles(diff *diffview.Diff, styles diffview.Styles, opts ...Mod
 	return Model{
 		diff:          diff,
 		styles:        styles,
+		palette:       palette,
 		renderer:      cfg.renderer,
 		keymap:        DefaultKeyMap(),
 		hunkPositions: hunkPositions,
@@ -109,9 +126,49 @@ func defaultStyles() diffview.Styles {
 	}
 }
 
+// defaultPalette returns the default palette (Catppuccin Mocha).
+func defaultPalette() diffview.Palette {
+	return diffview.Palette{
+		// Base colors
+		Background: "#1e1e2e",
+		Foreground: "#cdd6f4",
+
+		// Diff colors
+		Added:    "#a6e3a1",
+		Deleted:  "#f38ba8",
+		Modified: "#f9e2af",
+		Context:  "#6c7086",
+
+		// Syntax highlighting colors
+		Keyword:     "#cba6f7",
+		String:      "#a6e3a1",
+		Number:      "#fab387",
+		Comment:     "#6c7086",
+		Operator:    "#89dceb",
+		Function:    "#89b4fa",
+		Type:        "#f9e2af",
+		Constant:    "#fab387",
+		Punctuation: "#9399b2",
+
+		// UI colors
+		UIBackground: "#313244",
+		UIForeground: "#a6adc8",
+		UIAccent:     "#89b4fa",
+	}
+}
+
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
 	return nil
+}
+
+// newStyle creates a new lipgloss style using the model's renderer.
+// This ensures consistent color output in both production and tests.
+func (m Model) newStyle() lipgloss.Style {
+	if m.renderer != nil {
+		return m.renderer.NewStyle()
+	}
+	return lipgloss.NewStyle()
 }
 
 // Update implements tea.Model.
@@ -203,18 +260,18 @@ func (m Model) View() string {
 
 // statusBarView renders the status bar with position info.
 func (m Model) statusBarView() string {
-	// Styles for status bar components
-	barStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#313244")).
-		Foreground(lipgloss.Color("#cdd6f4"))
+	// Create styles using palette colors and renderer
+	barStyle := m.newStyle().
+		Background(lipgloss.Color(m.palette.UIBackground)).
+		Foreground(lipgloss.Color(m.palette.Foreground))
 
-	dimStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#313244")).
-		Foreground(lipgloss.Color("#6c7086"))
+	dimStyle := m.newStyle().
+		Background(lipgloss.Color(m.palette.UIBackground)).
+		Foreground(lipgloss.Color(m.palette.Context))
 
-	sepStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#313244")).
-		Foreground(lipgloss.Color("#45475a"))
+	sepStyle := m.newStyle().
+		Background(lipgloss.Color(m.palette.UIBackground)).
+		Foreground(lipgloss.Color(m.palette.UIForeground))
 
 	// Format position info with fixed widths
 	fileIdx, fileTotal := m.currentFilePosition()
