@@ -64,10 +64,10 @@ func (d *Differ) Diff(old, new string) (oldSegs, newSegs []diffview.Segment) {
 	newTokens := d.Tokenize(new)
 
 	matcher := difflib.NewMatcher(oldTokens, newTokens)
-	ratio := matcher.Ratio()
 
-	// Low similarity - return everything as changed
-	if ratio < similarityThreshold {
+	// Use QuickRatio for threshold check - it's an upper bound estimate.
+	// If QuickRatio < threshold, actual ratio is guaranteed to be below too.
+	if matcher.QuickRatio() < similarityThreshold {
 		return []diffview.Segment{{Text: old, Changed: true}},
 			[]diffview.Segment{{Text: new, Changed: true}}
 	}
