@@ -134,6 +134,14 @@ func defaultStyles() diffview.Styles {
 		LineNumber: diffview.ColorPair{
 			Foreground: "#6c7086", // Muted gray
 		},
+		AddedGutter: diffview.ColorPair{
+			Foreground: "#cdd6f4", // Same as code line foreground
+			Background: "#3d5a3d", // Stronger green background (~35% blend)
+		},
+		DeletedGutter: diffview.ColorPair{
+			Foreground: "#cdd6f4", // Same as code line foreground
+			Background: "#5a3d3d", // Stronger red background (~35% blend)
+		},
 		AddedHighlight: diffview.ColorPair{
 			Foreground: "#1e1e2e", // Dark text on bright background
 			Background: "#a6e3a1", // Bright green background
@@ -538,6 +546,8 @@ func renderDiff(cfg renderConfig) string {
 	deletedStyle := styleFromColorPair(styles.Deleted, renderer)
 	contextStyle := styleFromColorPair(styles.Context, renderer)
 	lineNumStyle := styleFromColorPair(styles.LineNumber, renderer)
+	addedGutterStyle := styleFromColorPair(styles.AddedGutter, renderer)
+	deletedGutterStyle := styleFromColorPair(styles.DeletedGutter, renderer)
 
 	var sb strings.Builder
 	fileCount := 0
@@ -585,8 +595,17 @@ func renderDiff(cfg renderConfig) string {
 
 			// Render lines with gutter and prefixes
 			for _, line := range hunk.Lines {
-				// Line number gutter
-				sb.WriteString(formatGutter(line.OldLineNum, line.NewLineNum, gutterWidth, lineNumStyle))
+				// Line number gutter with diff-aware styling
+				var gutterStyle lipgloss.Style
+				switch line.Type {
+				case diffview.LineAdded:
+					gutterStyle = addedGutterStyle
+				case diffview.LineDeleted:
+					gutterStyle = deletedGutterStyle
+				default:
+					gutterStyle = lineNumStyle
+				}
+				sb.WriteString(formatGutter(line.OldLineNum, line.NewLineNum, gutterWidth, gutterStyle))
 
 				// Get prefix and content
 				prefix := linePrefixFor(line.Type)
@@ -719,21 +738,22 @@ func calculateGutterWidth(diff *diffview.Diff) int {
 }
 
 // formatGutter formats the gutter column with old and new line numbers.
-// Format: "  12    14 │" for lines with both numbers
-// Format: "  12     - │" for deleted lines (no new line number)
-// Format: "   -    14 │" for added lines (no old line number)
+// Format: "  12    14 " for lines with both numbers
+// Format: "  12       " for deleted lines (no new line number - empty space)
+// Format: "       14 " for added lines (no old line number - empty space)
+// No divider character - the color transition provides visual separation.
 func formatGutter(oldLineNum, newLineNum, width int, style lipgloss.Style) string {
 	oldStr := formatLineNum(oldLineNum, width)
 	newStr := formatLineNum(newLineNum, width)
-	gutter := fmt.Sprintf("%s %s │", oldStr, newStr)
+	gutter := fmt.Sprintf("%s %s ", oldStr, newStr)
 	return style.Render(gutter)
 }
 
 // formatLineNum formats a line number for the gutter.
-// Returns right-aligned number or "-" for zero (missing) line numbers.
+// Returns right-aligned number or empty space for zero (missing) line numbers.
 func formatLineNum(num, width int) string {
 	if num == 0 {
-		return fmt.Sprintf("%*s", width, "-")
+		return fmt.Sprintf("%*s", width, "")
 	}
 	return fmt.Sprintf("%*d", width, num)
 }

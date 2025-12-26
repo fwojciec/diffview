@@ -61,6 +61,14 @@ func stylesFromPalette(p diffview.Palette) diffview.Styles {
 		LineNumber: diffview.ColorPair{
 			Foreground: string(p.Context),
 		},
+		AddedGutter: diffview.ColorPair{
+			Foreground: string(p.Foreground), // Same as code line foreground
+			Background: blendWithBackground(p.Added, p.Background, 0.35),
+		},
+		DeletedGutter: diffview.ColorPair{
+			Foreground: string(p.Foreground), // Same as code line foreground
+			Background: blendWithBackground(p.Deleted, p.Background, 0.35),
+		},
 		AddedHighlight: diffview.ColorPair{
 			Foreground: string(p.Background),
 			Background: string(p.Added),

@@ -1495,7 +1495,7 @@ func TestModel_RendersLineNumbersInGutter(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestModel_GutterShowsDashForMissingLineNumbers(t *testing.T) {
+func TestModel_GutterUsesEmptySpaceForMissingLineNumbers(t *testing.T) {
 	t.Parallel()
 
 	diff := &diffview.Diff{
@@ -1525,13 +1525,113 @@ func TestModel_GutterShowsDashForMissingLineNumbers(t *testing.T) {
 		teatest.WithInitialTermSize(80, 24),
 	)
 
-	// For added lines, old line number should show as "-"
-	// The gutter should show something like "   -     2 │+new line"
-	// Look for the separator immediately before the + prefix for added lines
+	// For added lines, old line number should be empty space (not "-")
+	// Gutter has no divider - color transition provides separation
+	// The gutter directly precedes the line content: "    2 +new line"
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		// The gutter separator should appear right before the + prefix
-		hasGutterBeforeAdded := bytes.Contains(out, []byte("│+new line"))
-		return hasGutterBeforeAdded
+		// The gutter should NOT have divider character before the + prefix
+		// (status bar uses │ as separator, so we check specifically for gutter)
+		hasOldGutterFormat := bytes.Contains(out, []byte("│+new line"))
+		hasContent := bytes.Contains(out, []byte("+new line"))
+		// Also verify "-" placeholder is replaced with empty space
+		hasDashPlaceholder := bytes.Contains(out, []byte("-    2"))
+		return !hasOldGutterFormat && hasContent && !hasDashPlaceholder
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_GutterHasColoredBackgroundForAddedLines(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context", OldLineNum: 1, NewLineNum: 1},
+							{Type: diffview.LineAdded, Content: "added", OldLineNum: 0, NewLineNum: 2},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// TestTheme has AddedGutter with background from blending #00ff00 with #000000 at 35%
+	// Result: RGB(0, 89, 0) -> "48;2;0;89;0"
+	theme := dv.TestTheme()
+	m := bubbletea.NewModel(diff,
+		bubbletea.WithTheme(theme),
+		bubbletea.WithRenderer(trueColorRenderer()),
+	)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// The gutter for added lines should have the AddedGutter background color
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasContent := bytes.Contains(out, []byte("+added"))
+		// Check for the gutter background color (stronger green)
+		hasGutterBackground := bytes.Contains(out, []byte("48;2;0;89;0"))
+		return hasContent && hasGutterBackground
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_GutterHasColoredBackgroundForDeletedLines(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 2,
+						NewStart: 1,
+						NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context", OldLineNum: 1, NewLineNum: 1},
+							{Type: diffview.LineDeleted, Content: "deleted", OldLineNum: 2, NewLineNum: 0},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// TestTheme has DeletedGutter with background from blending #ff0000 with #000000 at 35%
+	// Result: RGB(89, 0, 0) -> "48;2;89;0;0"
+	theme := dv.TestTheme()
+	m := bubbletea.NewModel(diff,
+		bubbletea.WithTheme(theme),
+		bubbletea.WithRenderer(trueColorRenderer()),
+	)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// The gutter for deleted lines should have the DeletedGutter background color
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasContent := bytes.Contains(out, []byte("-deleted"))
+		// Check for the gutter background color (stronger red)
+		hasGutterBackground := bytes.Contains(out, []byte("48;2;89;0;0"))
+		return hasContent && hasGutterBackground
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
