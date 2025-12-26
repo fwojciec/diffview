@@ -720,6 +720,7 @@ func padLine(line string, width int) string {
 
 // Viewer implements diffview.Viewer using a Bubble Tea TUI.
 type Viewer struct {
+	theme       diffview.Theme
 	programOpts []tea.ProgramOption
 }
 
@@ -734,9 +735,9 @@ func WithProgramOptions(opts ...tea.ProgramOption) ViewerOption {
 	}
 }
 
-// NewViewer creates a new Viewer.
-func NewViewer(opts ...ViewerOption) *Viewer {
-	v := &Viewer{}
+// NewViewer creates a new Viewer with the given theme.
+func NewViewer(theme diffview.Theme, opts ...ViewerOption) *Viewer {
+	v := &Viewer{theme: theme}
 	for _, opt := range opts {
 		opt(v)
 	}
@@ -745,7 +746,7 @@ func NewViewer(opts ...ViewerOption) *Viewer {
 
 // View displays the diff and blocks until the user exits.
 func (v *Viewer) View(ctx context.Context, diff *diffview.Diff) error {
-	m := NewModel(diff)
+	m := NewModel(diff, WithTheme(v.theme))
 	opts := []tea.ProgramOption{
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),

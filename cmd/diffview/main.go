@@ -12,6 +12,7 @@ import (
 	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/bubbletea"
 	"github.com/fwojciec/diffview/gitdiff"
+	"github.com/fwojciec/diffview/lipgloss"
 )
 
 // ErrNoChanges is returned when the diff contains no changes to display.
@@ -55,7 +56,7 @@ func main() {
 	app := &App{
 		Stdin:  os.Stdin,
 		Parser: gitdiff.NewParser(),
-		Viewer: bubbletea.NewViewer(),
+		Viewer: bubbletea.NewViewer(lipgloss.DefaultTheme()),
 	}
 
 	if err := app.Run(ctx); err != nil {

@@ -773,6 +773,7 @@ func TestViewer_ContextCancellation(t *testing.T) {
 	var in bytes.Buffer
 	var out bytes.Buffer
 	viewer := bubbletea.NewViewer(
+		dv.TestTheme(),
 		bubbletea.WithProgramOptions(
 			tea.WithInput(&in),
 			tea.WithOutput(&out),
@@ -813,6 +814,7 @@ func TestViewer_ContextAlreadyCancelled(t *testing.T) {
 	var in bytes.Buffer
 	var out bytes.Buffer
 	viewer := bubbletea.NewViewer(
+		dv.TestTheme(),
 		bubbletea.WithProgramOptions(
 			tea.WithInput(&in),
 			tea.WithOutput(&out),
