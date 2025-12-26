@@ -256,30 +256,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if !m.ready {
 			// First render - create viewport and render content
-			content := renderDiff(renderConfig{
-				diff:             m.diff,
-				styles:           m.styles,
-				renderer:         m.renderer,
-				width:            m.width,
-				languageDetector: m.languageDetector,
-				tokenizer:        m.tokenizer,
-			})
 			m.viewport = viewport.New(msg.Width, msg.Height-statusBarHeight)
-			m.viewport.SetContent(content)
+			m.viewport.SetContent(m.renderContent())
 			m.ready = true
 		} else if widthChanged {
 			// Width changed - re-render content
-			content := renderDiff(renderConfig{
-				diff:             m.diff,
-				styles:           m.styles,
-				renderer:         m.renderer,
-				width:            m.width,
-				languageDetector: m.languageDetector,
-				tokenizer:        m.tokenizer,
-			})
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - statusBarHeight
-			m.viewport.SetContent(content)
+			m.viewport.SetContent(m.renderContent())
 		} else {
 			// Only height changed
 			m.viewport.Height = msg.Height - statusBarHeight
@@ -297,6 +281,18 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, m.viewport.View(), m.statusBarView())
+}
+
+// renderContent renders the diff content with current model configuration.
+func (m Model) renderContent() string {
+	return renderDiff(renderConfig{
+		diff:             m.diff,
+		styles:           m.styles,
+		renderer:         m.renderer,
+		width:            m.width,
+		languageDetector: m.languageDetector,
+		tokenizer:        m.tokenizer,
+	})
 }
 
 // statusBarView renders the status bar with position info.
@@ -550,7 +546,6 @@ func renderDiff(cfg renderConfig) string {
 	deletedGutterStyle := styleFromColorPair(styles.DeletedGutter, renderer)
 
 	var sb strings.Builder
-	fileCount := 0
 	for _, file := range diff.Files {
 		// Only render file if it has hunks (skip binary/empty files)
 		if len(file.Hunks) == 0 {
@@ -585,7 +580,6 @@ func renderDiff(cfg renderConfig) string {
 		header := middle + fill + end
 		sb.WriteString(fileHeaderStyle.Render(header))
 		sb.WriteString("\n")
-		fileCount++
 
 		for _, hunk := range file.Hunks {
 			// Render hunk header with styling

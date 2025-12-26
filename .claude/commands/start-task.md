@@ -131,13 +131,13 @@ Only proceed to step 8 when `make validate` passes cleanly.
 
 ### 8. Self-Review
 
-Before finishing, get a fresh perspective on the implementation. This is an internal feedback loop to catch issues before committing—not a formal PR review (that happens after `/finish-task`).
+Before finishing, get independent perspectives on the implementation. Launch two review subagents in parallel—each provides a "second opinion" from a different angle, and running them concurrently saves time.
 
-**Launch both reviews in parallel:**
-1. `Skill(superpowers:requesting-code-review)` - correctness, style, bugs (review uncommitted changes, not a PR)
-2. `Task(subagent_type="beads-review")` - forward compatibility with downstream work and CLAUDE.md standards
+**Launch both reviews in parallel using a single message with multiple tool calls:**
+1. `Skill(code-review:code-review)` - correctness, style, bugs (review uncommitted changes, not a PR)
+2. `Task(subagent_type="beads-review")` - forward compatibility with downstream work
 
-Wait for both to complete.
+Wait for both to complete. The value is in getting two independent assessments—issues flagged by both reviewers deserve extra attention.
 
 **Evaluate feedback with YAGNI awareness:**
 

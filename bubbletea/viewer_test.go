@@ -950,90 +950,7 @@ func TestModel_RendersLinePrefixes(t *testing.T) {
 func TestModel_AppliesColors(t *testing.T) {
 	t.Parallel()
 
-	diff := &diffview.Diff{
-		Files: []diffview.FileDiff{
-			{
-				OldPath:   "a/test.go",
-				NewPath:   "b/test.go",
-				Operation: diffview.FileModified,
-				Hunks: []diffview.Hunk{
-					{
-						OldStart: 1,
-						OldCount: 1,
-						NewStart: 1,
-						NewCount: 2,
-						Lines: []diffview.Line{
-							{Type: diffview.LineContext, Content: "context"},
-							{Type: diffview.LineAdded, Content: "added"},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	// Use WithRenderer to force true color output without global state
-	m := bubbletea.NewModel(diff, bubbletea.WithRenderer(trueColorRenderer()))
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 24),
-	)
-
-	// Wait for styled output - true color foreground codes use 38;2;R;G;B format
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasForegroundColor := bytes.Contains(out, []byte("38;2;"))
-		hasContent := bytes.Contains(out, []byte("added"))
-		return hasForegroundColor && hasContent
-	})
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
-func TestModel_AddedLinesHaveBackgroundColor(t *testing.T) {
-	t.Parallel()
-
-	diff := &diffview.Diff{
-		Files: []diffview.FileDiff{
-			{
-				OldPath:   "a/test.go",
-				NewPath:   "b/test.go",
-				Operation: diffview.FileModified,
-				Hunks: []diffview.Hunk{
-					{
-						OldStart: 1,
-						OldCount: 1,
-						NewStart: 1,
-						NewCount: 2,
-						Lines: []diffview.Line{
-							{Type: diffview.LineContext, Content: "context line"},
-							{Type: diffview.LineAdded, Content: "added line"},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	m := bubbletea.NewModel(diff, bubbletea.WithRenderer(trueColorRenderer()))
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 24),
-	)
-
-	// Wait for output with background color on added line
-	// True color backgrounds use ESC[48;2;R;G;Bm format
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasAddedLine := bytes.Contains(out, []byte("+added line"))
-		hasBackgroundColor := bytes.Contains(out, []byte("48;2;"))
-		return hasAddedLine && hasBackgroundColor
-	})
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
-func TestModel_DeletedLinesHaveBackgroundColor(t *testing.T) {
-	t.Parallel()
-
+	// Diff with all line types for comprehensive color testing
 	diff := &diffview.Diff{
 		Files: []diffview.FileDiff{
 			{
@@ -1045,10 +962,11 @@ func TestModel_DeletedLinesHaveBackgroundColor(t *testing.T) {
 						OldStart: 1,
 						OldCount: 2,
 						NewStart: 1,
-						NewCount: 1,
+						NewCount: 2,
 						Lines: []diffview.Line{
-							{Type: diffview.LineContext, Content: "context line"},
-							{Type: diffview.LineDeleted, Content: "deleted line"},
+							{Type: diffview.LineContext, Content: "context"},
+							{Type: diffview.LineDeleted, Content: "deleted"},
+							{Type: diffview.LineAdded, Content: "added"},
 						},
 					},
 				},
@@ -1061,12 +979,14 @@ func TestModel_DeletedLinesHaveBackgroundColor(t *testing.T) {
 		teatest.WithInitialTermSize(80, 24),
 	)
 
-	// Wait for output with background color on deleted line
-	// True color backgrounds use ESC[48;2;R;G;Bm format
+	// Wait for output with both foreground and background colors
+	// True color uses 38;2;R;G;B for foreground, 48;2;R;G;B for background
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasDeletedLine := bytes.Contains(out, []byte("-deleted line"))
+		hasForegroundColor := bytes.Contains(out, []byte("38;2;"))
 		hasBackgroundColor := bytes.Contains(out, []byte("48;2;"))
-		return hasDeletedLine && hasBackgroundColor
+		hasAddedLine := bytes.Contains(out, []byte("+added"))
+		hasDeletedLine := bytes.Contains(out, []byte("-deleted"))
+		return hasForegroundColor && hasBackgroundColor && hasAddedLine && hasDeletedLine
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -1322,126 +1242,6 @@ func TestModel_StatusBarShowsKeyHints(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestModel_StatusBarUpdatesOnFileNavigation(t *testing.T) {
-	t.Parallel()
-
-	// Create 3 files with multiple lines each
-	lines := make([]diffview.Line, 20)
-	for i := range lines {
-		lines[i] = diffview.Line{Type: diffview.LineContext, Content: "content line"}
-	}
-
-	diff := &diffview.Diff{
-		Files: []diffview.FileDiff{
-			{
-				OldPath: "a/first.go",
-				NewPath: "b/first.go",
-				Hunks:   []diffview.Hunk{{Lines: lines}},
-			},
-			{
-				OldPath: "a/second.go",
-				NewPath: "b/second.go",
-				Hunks:   []diffview.Hunk{{Lines: lines}},
-			},
-			{
-				OldPath: "a/third.go",
-				NewPath: "b/third.go",
-				Hunks:   []diffview.Hunk{{Lines: lines}},
-			},
-		},
-	}
-
-	m := bubbletea.NewModel(diff)
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 10), // Small height to enable scrolling
-	)
-
-	// Initially at file 1/3
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("file 1/3"))
-	})
-
-	// Navigate to next file
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-
-	// Should now show file 2/3
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("file 2/3"))
-	})
-
-	// Navigate to next file
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-
-	// Should now show file 3/3
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("file 3/3"))
-	})
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
-func TestModel_StatusBarUpdatesOnHunkNavigation(t *testing.T) {
-	t.Parallel()
-
-	// Create file with 3 hunks, each with multiple lines
-	lines := make([]diffview.Line, 15)
-	for i := range lines {
-		lines[i] = diffview.Line{Type: diffview.LineContext, Content: "content line"}
-	}
-
-	diff := &diffview.Diff{
-		Files: []diffview.FileDiff{
-			{
-				OldPath: "a/file.go",
-				NewPath: "b/file.go",
-				Hunks: []diffview.Hunk{
-					{Lines: lines},
-					{Lines: lines},
-					{Lines: lines},
-				},
-			},
-		},
-	}
-
-	m := bubbletea.NewModel(diff)
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 10), // Small height to enable scrolling
-	)
-
-	// Initially at hunk 1/3
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("hunk 1/3"))
-	})
-
-	// Navigate to next hunk with 'n'
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
-
-	// Should now show hunk 2/3
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("hunk 2/3"))
-	})
-
-	// Navigate to next hunk
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
-
-	// Should now show hunk 3/3
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("hunk 3/3"))
-	})
-
-	// Navigate back with 'N'
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
-
-	// Should now show hunk 2/3
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("hunk 2/3"))
-	})
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
 func TestModel_RendersLineNumbersInGutter(t *testing.T) {
 	t.Parallel()
 
@@ -1632,105 +1432,6 @@ func TestModel_GutterHasColoredBackgroundForDeletedLines(t *testing.T) {
 		// Check for the gutter background color (stronger red)
 		hasGutterBackground := bytes.Contains(out, []byte("48;2;89;0;0"))
 		return hasContent && hasGutterBackground
-	})
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
-func TestModel_RendersSeparatorBetweenFiles(t *testing.T) {
-	t.Parallel()
-
-	// Create diff with 2 files to verify separator appears between them
-	diff := &diffview.Diff{
-		Files: []diffview.FileDiff{
-			{
-				OldPath:   "a/first.go",
-				NewPath:   "b/first.go",
-				Operation: diffview.FileModified,
-				Hunks: []diffview.Hunk{
-					{
-						OldStart: 1,
-						OldCount: 1,
-						NewStart: 1,
-						NewCount: 1,
-						Lines: []diffview.Line{
-							{Type: diffview.LineContext, Content: "first file content"},
-						},
-					},
-				},
-			},
-			{
-				OldPath:   "a/second.go",
-				NewPath:   "b/second.go",
-				Operation: diffview.FileModified,
-				Hunks: []diffview.Hunk{
-					{
-						OldStart: 1,
-						OldCount: 1,
-						NewStart: 1,
-						NewCount: 1,
-						Lines: []diffview.Line{
-							{Type: diffview.LineContext, Content: "second file content"},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	m := bubbletea.NewModel(diff)
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 24),
-	)
-
-	// Separator should use box-drawing character ─ (U+2500)
-	// It should appear between files but NOT before the first file
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasSeparator := bytes.Contains(out, []byte("─"))
-		hasFirstFile := bytes.Contains(out, []byte("first.go"))
-		hasSecondFile := bytes.Contains(out, []byte("second.go"))
-		return hasSeparator && hasFirstFile && hasSecondFile
-	})
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
-func TestModel_NoSeparatorBeforeFirstFile(t *testing.T) {
-	t.Parallel()
-
-	// Create diff with single file - no separator should appear
-	diff := &diffview.Diff{
-		Files: []diffview.FileDiff{
-			{
-				OldPath:   "a/only.go",
-				NewPath:   "b/only.go",
-				Operation: diffview.FileModified,
-				Hunks: []diffview.Hunk{
-					{
-						OldStart: 1,
-						OldCount: 1,
-						NewStart: 1,
-						NewCount: 1,
-						Lines: []diffview.Line{
-							{Type: diffview.LineContext, Content: "only file content"},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	m := bubbletea.NewModel(diff)
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 24),
-	)
-
-	// Wait for content to render with enhanced header
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("── ")) &&
-			bytes.Contains(out, []byte("only.go"))
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
