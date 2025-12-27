@@ -2,6 +2,7 @@ package git_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,11 +93,11 @@ func TestRunner_MergeCommits(t *testing.T) {
 		t.Parallel()
 		dir := setupTestRepo(t)
 
-		// Create two merges
+		// Create three merges
 		for i := 1; i <= 3; i++ {
-			branchName := "feature-" + string(rune('0'+i))
+			branchName := fmt.Sprintf("feature-%d", i)
 			runGit(t, dir, "checkout", "-b", branchName)
-			writeFile(t, dir, "file"+string(rune('0'+i))+".txt", "content\n")
+			writeFile(t, dir, fmt.Sprintf("file%d.txt", i), "content\n")
 			runGit(t, dir, "add", ".")
 			runGit(t, dir, "commit", "-m", "Commit on "+branchName)
 			runGit(t, dir, "checkout", "main")

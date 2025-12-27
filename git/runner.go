@@ -84,8 +84,12 @@ func (r *Runner) MergeCommits(ctx context.Context, repoPath string, limit int) (
 		return nil, fmt.Errorf("git log --merges failed: %w", err)
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	var hashes []string
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed == "" {
+		return nil, nil
+	}
+	lines := strings.Split(trimmed, "\n")
+	hashes := make([]string, 0, len(lines))
 	for _, line := range lines {
 		if line != "" {
 			hashes = append(hashes, line)
