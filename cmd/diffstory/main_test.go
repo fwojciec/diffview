@@ -218,6 +218,10 @@ index 0000000..e69de29
 		Output:   &stdout,
 		RepoName: "testrepo",
 		Git: &mock.GitRunner{
+			// No merge commits - triggers fallback to commit-level
+			MergeCommitsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return nil, nil
+			},
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return []string{"abc1234"}, nil
 			},
@@ -271,6 +275,10 @@ new file mode 100644
 		Output:   &stdout,
 		RepoName: "testrepo",
 		Git: &mock.GitRunner{
+			// No merge commits - triggers fallback to commit-level
+			MergeCommitsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return nil, nil
+			},
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return []string{"commit1", "commit2"}, nil
 			},
@@ -316,6 +324,10 @@ new file mode 100644
 		Output:   &stdout,
 		RepoName: "testrepo",
 		Git: &mock.GitRunner{
+			// No merge commits - triggers fallback to commit-level
+			MergeCommitsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return nil, nil
+			},
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return []string{"abc"}, nil
 			},
@@ -344,6 +356,10 @@ func TestCollector_Run_GitLogError(t *testing.T) {
 		Output:   &stdout,
 		RepoName: "testrepo",
 		Git: &mock.GitRunner{
+			// No merge commits - triggers fallback to commit-level
+			MergeCommitsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return nil, nil
+			},
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return nil, errors.New("not a git repository")
 			},
@@ -369,6 +385,10 @@ func TestCollector_Run_GitShowError(t *testing.T) {
 		Output:   &stdout,
 		RepoName: "testrepo",
 		Git: &mock.GitRunner{
+			// No merge commits - triggers fallback to commit-level
+			MergeCommitsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return nil, nil
+			},
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return []string{"abc123"}, nil
 			},
@@ -389,7 +409,7 @@ func TestCollector_Run_GitShowError(t *testing.T) {
 func TestCollector_Run_SkipsCommitsWithoutFiles(t *testing.T) {
 	t.Parallel()
 
-	// Merge commits often have no diff
+	// Some commits have no diff (e.g., empty commits)
 	emptyDiff := ""
 	realDiff := `diff --git a/a.go b/a.go
 new file mode 100644
@@ -404,11 +424,15 @@ new file mode 100644
 		Output:   &stdout,
 		RepoName: "testrepo",
 		Git: &mock.GitRunner{
+			// No merge commits - triggers fallback to commit-level
+			MergeCommitsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return nil, nil
+			},
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
-				return []string{"merge-commit", "real-commit"}, nil
+				return []string{"empty-commit", "real-commit"}, nil
 			},
 			ShowFn: func(_ context.Context, _ string, hash string) (string, error) {
-				if hash == "merge-commit" {
+				if hash == "empty-commit" {
 					return emptyDiff, nil
 				}
 				return realDiff, nil
@@ -423,7 +447,7 @@ new file mode 100644
 	require.NoError(t, err)
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	// Should only have 1 line (real commit), merge commit skipped
+	// Should only have 1 line (real commit), empty commit skipped
 	require.Len(t, lines, 1)
 	assert.Contains(t, lines[0], `"hash":"real-commit"`)
 }
@@ -444,6 +468,10 @@ new file mode 100644
 		Output:   &stdout,
 		RepoName: "testrepo",
 		Git: &mock.GitRunner{
+			// No merge commits - triggers fallback to commit-level
+			MergeCommitsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return nil, nil
+			},
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return []string{"abc123"}, nil
 			},
@@ -593,4 +621,193 @@ func TestClassifyRunner_Run_PreservesExistingStories(t *testing.T) {
 	assert.Contains(t, lines[0], `"summary":"Already classified"`)
 	// Second case should have new classification
 	assert.Contains(t, lines[1], `"summary":"Newly classified"`)
+}
+
+func TestParseBranchFromMergeMessage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		message string
+		want    string
+	}{
+		{
+			name:    "standard GitHub merge",
+			message: "Merge pull request #42 from user/feature-branch",
+			want:    "feature-branch",
+		},
+		{
+			name:    "multi-line message",
+			message: "Merge pull request #42 from user/feature-branch\n\nThis PR adds a new feature.",
+			want:    "feature-branch",
+		},
+		{
+			name:    "nested branch path",
+			message: "Merge pull request #42 from user/bugfix/auth/login",
+			want:    "bugfix/auth/login",
+		},
+		{
+			name:    "non-GitHub merge format",
+			message: "Merge branch 'feature' into main",
+			want:    "",
+		},
+		{
+			name:    "empty message",
+			message: "",
+			want:    "",
+		},
+		{
+			name:    "no from clause",
+			message: "Merge pull request #42",
+			want:    "",
+		},
+		{
+			name:    "no slash in user/branch",
+			message: "Merge pull request #42 from just-branch-name",
+			want:    "just-branch-name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := main.ParseBranchFromMergeMessage(tt.message)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestCollector_Run_FallsBackToCommitLevelWithNoMergeCommits(t *testing.T) {
+	t.Parallel()
+
+	diffOutput := `diff --git a/fix.go b/fix.go
+new file mode 100644
+--- /dev/null
++++ b/fix.go
+@@ -0,0 +1,3 @@
++package main
++
++func fix() {}
+`
+
+	var stdout bytes.Buffer
+	collector := &main.Collector{
+		Output:   &stdout,
+		RepoName: "testrepo",
+		Git: &mock.GitRunner{
+			// No merge commits - triggers fallback
+			MergeCommitsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return nil, nil // Empty slice means no merge commits
+			},
+			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return []string{"abc123"}, nil
+			},
+			ShowFn: func(_ context.Context, _ string, _ string) (string, error) {
+				return diffOutput, nil
+			},
+			MessageFn: func(_ context.Context, _ string, _ string) (string, error) {
+				return "Fix bug", nil
+			},
+			// PR-level methods should not be called
+			CommitsInRangeFn: func(_ context.Context, _ string, _, _ string) ([]diffview.CommitBrief, error) {
+				t.Error("CommitsInRange should not be called in fallback mode")
+				return nil, nil
+			},
+			DiffRangeFn: func(_ context.Context, _ string, _, _ string) (string, error) {
+				t.Error("DiffRange should not be called in fallback mode")
+				return "", nil
+			},
+		},
+	}
+
+	err := collector.Run(context.Background())
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.Len(t, lines, 1)
+
+	output := lines[0]
+	// Should have single commit in the commits array
+	assert.Contains(t, output, `"hash":"abc123"`)
+	assert.Contains(t, output, `"message":"Fix bug"`)
+	// Branch should be empty in fallback mode
+	assert.Contains(t, output, `"branch":""`)
+}
+
+func TestCollector_Run_ExtractsPRLevelFromMergeCommits(t *testing.T) {
+	t.Parallel()
+
+	// PR diff showing combined changes from the feature branch
+	prDiff := `diff --git a/feature.go b/feature.go
+new file mode 100644
+--- /dev/null
++++ b/feature.go
+@@ -0,0 +1,5 @@
++package main
++
++func newFeature() {
++	// implementation
++}
+`
+
+	var stdout bytes.Buffer
+	collector := &main.Collector{
+		Output:   &stdout,
+		RepoName: "testrepo",
+		Git: &mock.GitRunner{
+			// PR-level methods
+			MergeCommitsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				// Return one merge commit
+				return []string{"merge123"}, nil
+			},
+			CommitsInRangeFn: func(_ context.Context, _ string, base, head string) ([]diffview.CommitBrief, error) {
+				// Commits in the PR (base^1..base^2 where base is merge commit)
+				if base == "merge123^1" && head == "merge123^2" {
+					return []diffview.CommitBrief{
+						{Hash: "feat1", Message: "Add new feature"},
+						{Hash: "feat2", Message: "Fix tests"},
+					}, nil
+				}
+				return nil, errors.New("unexpected range")
+			},
+			DiffRangeFn: func(_ context.Context, _ string, base, head string) (string, error) {
+				if base == "merge123^1" && head == "merge123^2" {
+					return prDiff, nil
+				}
+				return "", errors.New("unexpected range")
+			},
+			MessageFn: func(_ context.Context, _ string, hash string) (string, error) {
+				if hash == "merge123" {
+					return "Merge pull request #42 from user/feature-branch", nil
+				}
+				return "", errors.New("unknown hash")
+			},
+			// Deprecated methods should not be called
+			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				t.Error("Log should not be called when merge commits exist")
+				return nil, nil
+			},
+			ShowFn: func(_ context.Context, _ string, _ string) (string, error) {
+				t.Error("Show should not be called for PR-level extraction")
+				return "", nil
+			},
+		},
+	}
+
+	err := collector.Run(context.Background())
+	require.NoError(t, err)
+
+	// Should output one PR-level case
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.Len(t, lines, 1)
+
+	output := lines[0]
+	// Should have branch name extracted from merge message
+	assert.Contains(t, output, `"branch":"feature-branch"`)
+	// Should have all commits from the PR
+	assert.Contains(t, output, `"hash":"feat1"`)
+	assert.Contains(t, output, `"hash":"feat2"`)
+	assert.Contains(t, output, `"message":"Add new feature"`)
+	// Should have the combined diff
+	assert.Contains(t, output, `"NewPath":"feature.go"`)
 }

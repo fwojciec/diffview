@@ -35,7 +35,92 @@ type Collector struct {
 }
 
 // Run extracts diffs from git history and writes JSONL output.
+// It first tries to extract PR-level cases from merge commits.
+// If no merge commits are found, it falls back to individual commits.
 func (c *Collector) Run(ctx context.Context) error {
+	// Try PR-level extraction first
+	mergeHashes, err := c.Git.MergeCommits(ctx, c.RepoPath, c.Limit)
+	if err != nil {
+		return err
+	}
+
+	if len(mergeHashes) > 0 {
+		return c.runPRLevel(ctx, mergeHashes)
+	}
+
+	// Fall back to commit-level extraction
+	return c.runCommitLevel(ctx)
+}
+
+// runPRLevel extracts PR-level cases from merge commits.
+func (c *Collector) runPRLevel(ctx context.Context, mergeHashes []string) error {
+	parser := gitdiff.NewParser()
+	encoder := json.NewEncoder(c.Output)
+
+	for _, mergeHash := range mergeHashes {
+		// Get the merge commit message to extract branch name
+		mergeMessage, err := c.Git.Message(ctx, c.RepoPath, mergeHash)
+		if err != nil {
+			return err
+		}
+
+		branch := ParseBranchFromMergeMessage(mergeMessage)
+
+		// Get commits in the PR (merge^1..merge^2)
+		base := mergeHash + "^1"
+		head := mergeHash + "^2"
+
+		commits, err := c.Git.CommitsInRange(ctx, c.RepoPath, base, head)
+		if err != nil {
+			return err
+		}
+
+		// Get combined diff for the PR
+		diffText, err := c.Git.DiffRange(ctx, c.RepoPath, base, head)
+		if err != nil {
+			return err
+		}
+
+		diff, err := parser.Parse(strings.NewReader(diffText))
+		if err != nil {
+			return err
+		}
+
+		// Skip PRs with no files
+		if len(diff.Files) == 0 {
+			continue
+		}
+
+		// Count total lines changed
+		totalLines := countLinesChanged(diff)
+
+		// Apply line filters
+		if c.MinLines > 0 && totalLines < c.MinLines {
+			continue
+		}
+		if c.MaxLines > 0 && totalLines > c.MaxLines {
+			continue
+		}
+
+		evalCase := diffview.EvalCase{
+			Input: diffview.ClassificationInput{
+				Repo:    c.RepoName,
+				Branch:  branch,
+				Commits: commits,
+				Diff:    *diff,
+			},
+			Story: nil,
+		}
+		if err := encoder.Encode(evalCase); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// runCommitLevel extracts individual commit cases (fallback mode).
+func (c *Collector) runCommitLevel(ctx context.Context) error {
 	hashes, err := c.Git.Log(ctx, c.RepoPath, c.Limit)
 	if err != nil {
 		return err
@@ -93,6 +178,33 @@ func (c *Collector) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// ParseBranchFromMergeMessage extracts the branch name from a GitHub merge commit message.
+// Format: "Merge pull request #N from user/branch-name"
+func ParseBranchFromMergeMessage(message string) string {
+	// Only parse the first line (merge messages may have additional body text)
+	firstLine := message
+	if idx := strings.IndexByte(message, '\n'); idx != -1 {
+		firstLine = message[:idx]
+	}
+
+	const prefix = "Merge pull request #"
+	if !strings.HasPrefix(firstLine, prefix) {
+		return ""
+	}
+	// Find "from user/branch"
+	fromIdx := strings.Index(firstLine, " from ")
+	if fromIdx == -1 {
+		return ""
+	}
+	userBranch := firstLine[fromIdx+6:] // Skip " from "
+	// Extract branch name after "user/"
+	slashIdx := strings.Index(userBranch, "/")
+	if slashIdx == -1 {
+		return userBranch
+	}
+	return userBranch[slashIdx+1:]
 }
 
 // ClassifyRunner classifies eval cases using an LLM classifier.
@@ -268,7 +380,7 @@ func runCollect(ctx context.Context) error {
 	limit := fs.Int("limit", 50, "Maximum number of commits to extract")
 	repo := fs.String("repo", "", "Repository name (defaults to directory name)")
 	minLines := fs.Int("min-lines", 5, "Minimum lines changed (skip smaller commits)")
-	maxLines := fs.Int("max-lines", 500, "Maximum lines changed (skip larger commits)")
+	maxLines := fs.Int("max-lines", 2000, "Maximum lines changed (skip larger PRs/commits)")
 
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		return err
