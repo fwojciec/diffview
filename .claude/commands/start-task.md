@@ -1,13 +1,14 @@
 ---
-description: Pick a ready beads task, create branch, and implement with behavioral TDD
+description: Pick a ready beads task, create worktree, and implement with behavioral TDD
 allowed-tools: Bash(bd:*), Bash(git:*), Bash(make:*)
 ---
 
 ## Current State
 
-Branch: !`git branch --show-current`
-Uncommitted changes: !`git status --porcelain`
-Beads uncommitted: !`git status --porcelain .beads/`
+Working directory: !`pwd`
+Is worktree: !`git rev-parse --is-inside-work-tree 2>/dev/null && git worktree list | grep -q "$(pwd)" && echo "yes (worktree)" || echo "no (main)"`
+Main repo: !`git worktree list | head -1 | awk '{print $1}'`
+Existing worktrees: !`git worktree list`
 
 ## In-Progress Work
 
@@ -22,25 +23,24 @@ Provided task ID: $1
 ### 1. Pre-flight Validation
 
 Before proceeding, verify:
-- [ ] Currently on `main` branch (if not, ask user before proceeding)
-- [ ] No uncommitted changes in `.beads/` directory (if there are, commit and push them first)
-- [ ] Working tree is clean (if not, ask user how to proceed)
+- [ ] No uncommitted changes in current directory
+- [ ] Daemon mode is disabled: `export BEADS_NO_DAEMON=1`
 
-If any checks fail, stop and resolve with the user before continuing.
+If there are uncommitted changes, ask user how to proceed.
 
 ### 2. Check for Abandoned Work
 
 If there are issues with status `in_progress`:
 - Show them to the user
 - Ask: "Continue with existing in-progress work, or start fresh task?"
-- If continuing: skip to step 4 with existing branch
+- If continuing: navigate to existing worktree
 - If starting fresh: ask if abandoned work should be reset to `open`
 
 ### 3. Task Selection
 
 **If a task ID was provided via argument ($1)**:
 - Verify the task exists: run `bd show <task-id>`
-- Skip to step 4 (Branch Setup)
+- Skip to step 4 (Worktree Setup)
 
 **If no task ID was provided**:
 - Run `bd ready` to show available tasks
@@ -49,15 +49,33 @@ If there are issues with status `in_progress`:
   - Logical ordering (foundational work before dependent work)
 - Use the AskUserQuestion tool to let the user choose which task to work on
 
-### 4. Branch Setup
+### 4. Worktree Setup
 
-Once you have a task ID (either from argument or user selection):
-1. Create branch first: `git checkout -b <task-id>` (e.g., `git checkout -b diffview-abc`)
-2. Mark the task as in-progress: `bd update <task-id> -s in_progress`
-3. Commit the beads change: `git add .beads/ && git commit -m "Start work on <task-id>"`
-4. Show full task details: `bd show <task-id>`
+Once you have a task ID:
 
-**Note**: All commits happen on the feature branch, keeping main clean.
+```bash
+# Get main repo path
+MAIN_REPO=$(git worktree list | head -1 | awk '{print $1}')
+
+# Create worktree in hidden location
+git worktree add "$MAIN_REPO/.git/beads-worktrees/<task-id>" -b <task-id>
+
+# Mark task as in-progress (shared DB, works from anywhere)
+bd update <task-id> -s in_progress
+```
+
+**Tell the user:**
+> Worktree created at: `$MAIN_REPO/.git/beads-worktrees/<task-id>`
+>
+> To work on this task, open a new Claude Code session in that directory:
+> ```bash
+> cd $MAIN_REPO/.git/beads-worktrees/<task-id>
+> claude
+> ```
+>
+> Or continue in this session if you prefer (I'll work in the worktree path).
+
+Show full task details: `bd show <task-id>`
 
 ### 5. Implementation
 
@@ -118,7 +136,7 @@ NEXT: [immediate next step]
 KEY_DECISIONS: [any important choices made]"
 ```
 
-Commit beads changes with your code commits to keep them in sync.
+Note: Beads state is in the shared database. It will be synced when finishing the task.
 
 ### 7. Validation
 
