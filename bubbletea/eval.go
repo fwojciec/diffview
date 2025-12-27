@@ -312,8 +312,7 @@ func (m *EvalModel) updateViewportContent() {
 			for _, line := range hunk.Lines {
 				prefix := linePrefixFor(line.Type)
 				diffContent.WriteString(prefix)
-				diffContent.WriteString(line.Content)
-				diffContent.WriteString("\n")
+				diffContent.WriteString(line.Content) // Content already includes newline
 			}
 		}
 	}
