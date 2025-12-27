@@ -2,6 +2,7 @@ package bubbletea_test
 
 import (
 	"bytes"
+	"sync"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -633,4 +634,113 @@ func TestEvalModel_StyledDiffRendering(t *testing.T) {
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_CopyCaseToClipboard(t *testing.T) {
+	t.Parallel()
+
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "feature-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123", Message: "Add new feature"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath:   "main.go",
+							Operation: diffview.FileModified,
+							Hunks: []diffview.Hunk{
+								{
+									OldStart: 10,
+									OldCount: 3,
+									NewStart: 10,
+									NewCount: 4,
+									Lines: []diffview.Line{
+										{Type: diffview.LineContext, Content: "context line"},
+										{Type: diffview.LineDeleted, Content: "old code", OldLineNum: 11},
+										{Type: diffview.LineAdded, Content: "new code", NewLineNum: 11},
+										{Type: diffview.LineAdded, Content: "more new code", NewLineNum: 12},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Narrative:  "core-periphery",
+				Summary:    "Added a new feature to the codebase",
+				Sections: []diffview.Section{
+					{
+						Role:        "core",
+						Title:       "Main implementation",
+						Explanation: "The core logic for the feature",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 0}},
+					},
+				},
+			},
+		},
+	}
+
+	// Create a mock clipboard to capture the copied content
+	mockClipboard := &mockClipboard{}
+	m := bubbletea.NewEvalModel(cases, bubbletea.WithClipboard(mockClipboard))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Wait for model to be ready (content appears in viewport)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Added a new feature"))
+	})
+
+	// Press 'y' to copy case to clipboard
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+
+	// Wait for the clipboard to be populated - the copy happens synchronously
+	// but we need to give the event loop a chance to process
+	teatest.WaitFor(t, tm.Output(), func(_ []byte) bool {
+		return mockClipboard.Content() != ""
+	})
+
+	// Verify clipboard received the formatted content
+	content := mockClipboard.Content()
+	assert.NotEmpty(t, content, "clipboard should have received content")
+
+	// Check that the content includes key elements
+	assert.Contains(t, content, "# Diff Classification Review")
+	assert.Contains(t, content, "## Input: Raw Diff")
+	assert.Contains(t, content, "test-repo")
+	assert.Contains(t, content, "feature-branch")
+	assert.Contains(t, content, "old code")
+	assert.Contains(t, content, "new code")
+	assert.Contains(t, content, "## Output: Story Classification")
+	assert.Contains(t, content, "Change Type: feature")
+	assert.Contains(t, content, "Narrative: core-periphery")
+	assert.Contains(t, content, "Added a new feature to the codebase")
+	assert.Contains(t, content, "## Your Task")
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+// mockClipboard captures content for testing.
+type mockClipboard struct {
+	mu      sync.Mutex
+	content string
+}
+
+func (m *mockClipboard) Copy(content string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.content = content
+	return nil
+}
+
+func (m *mockClipboard) Content() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.content
 }

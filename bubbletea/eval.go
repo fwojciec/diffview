@@ -60,6 +60,9 @@ type EvalModel struct {
 	store      diffview.JudgmentStore
 	outputPath string
 
+	// Clipboard
+	clipboard diffview.Clipboard
+
 	// Keybindings
 	keymap EvalKeyMap
 }
@@ -110,6 +113,13 @@ func WithEvalTokenizer(t diffview.Tokenizer) EvalModelOption {
 func WithEvalWordDiffer(d diffview.WordDiffer) EvalModelOption {
 	return func(m *EvalModel) {
 		m.wordDiffer = d
+	}
+}
+
+// WithClipboard sets the clipboard for copy operations.
+func WithClipboard(c diffview.Clipboard) EvalModelOption {
+	return func(m *EvalModel) {
+		m.clipboard = c
 	}
 }
 
@@ -226,6 +236,10 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keymap.Critique):
 		return m.enterCritiqueMode()
+
+	case key.Matches(msg, m.keymap.CopyCase):
+		m.copyCurrentCase()
+		return m, nil
 	}
 
 	return m, nil
@@ -461,6 +475,124 @@ func (m *EvalModel) persistJudgments() {
 	_ = m.store.Save(m.outputPath, judgments)
 }
 
+func (m *EvalModel) copyCurrentCase() {
+	if m.clipboard == nil || len(m.cases) == 0 {
+		return
+	}
+
+	c := m.cases[m.currentIndex]
+	content := formatCaseForExport(c)
+	// Best-effort copy - errors are silently ignored in UI
+	_ = m.clipboard.Copy(content)
+}
+
+// formatCaseForExport formats an EvalCase as markdown for LLM-assisted review.
+func formatCaseForExport(c diffview.EvalCase) string {
+	var sb strings.Builder
+
+	sb.WriteString("# Diff Classification Review\n\n")
+
+	// Input section: raw diff
+	sb.WriteString("## Input: Raw Diff\n\n")
+	sb.WriteString(fmt.Sprintf("Repository: %s\n", c.Input.Repo))
+	if c.Input.Branch != "" {
+		sb.WriteString(fmt.Sprintf("Branch: %s\n", c.Input.Branch))
+	}
+	if len(c.Input.Commits) > 0 {
+		sb.WriteString("\nCommits:\n")
+		for _, commit := range c.Input.Commits {
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", commit.Hash, commit.Message))
+		}
+	}
+	sb.WriteString("\n```diff\n")
+	for _, file := range c.Input.Diff.Files {
+		sb.WriteString(fmt.Sprintf("=== %s (%s) ===\n", formatFilePath(file), formatFileOp(file.Operation)))
+		for _, hunk := range file.Hunks {
+			sb.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n",
+				hunk.OldStart, hunk.OldCount, hunk.NewStart, hunk.NewCount))
+			for _, line := range hunk.Lines {
+				prefix := formatLinePrefix(line.Type)
+				sb.WriteString(prefix)
+				sb.WriteString(line.Content)
+				if !strings.HasSuffix(line.Content, "\n") {
+					sb.WriteString("\n")
+				}
+			}
+		}
+	}
+	sb.WriteString("```\n\n")
+
+	// Output section: story classification
+	sb.WriteString("## Output: Story Classification\n\n")
+	if c.Story != nil {
+		sb.WriteString(fmt.Sprintf("Change Type: %s\n", c.Story.ChangeType))
+		sb.WriteString(fmt.Sprintf("Narrative: %s\n", c.Story.Narrative))
+		sb.WriteString(fmt.Sprintf("Summary: %s\n\n", c.Story.Summary))
+
+		if len(c.Story.Sections) > 0 {
+			sb.WriteString("Sections:\n")
+			for i, section := range c.Story.Sections {
+				sb.WriteString(fmt.Sprintf("%d. [%s]: %s\n", i+1, section.Role, section.Title))
+				sb.WriteString(fmt.Sprintf("   %s\n", section.Explanation))
+				if len(section.Hunks) > 0 {
+					var hunkRefs []string
+					for _, h := range section.Hunks {
+						hunkRefs = append(hunkRefs, fmt.Sprintf("%s:H%d", h.File, h.HunkIndex))
+					}
+					sb.WriteString(fmt.Sprintf("   Hunks: %s\n", strings.Join(hunkRefs, ", ")))
+				}
+			}
+		}
+	} else {
+		sb.WriteString("[Not yet classified]\n")
+	}
+
+	// Task section: LLM review prompt
+	sb.WriteString("\n## Your Task\n\n")
+	sb.WriteString("Evaluate whether this classification accurately captures the diff:\n")
+	sb.WriteString("- Does the narrative match the actual changes?\n")
+	sb.WriteString("- Are hunks assigned to appropriate sections?\n")
+	sb.WriteString("- Is anything miscategorized or missing?\n")
+	sb.WriteString("- Should this pass or fail? Why?\n")
+
+	return sb.String()
+}
+
+func formatFilePath(file diffview.FileDiff) string {
+	if file.NewPath != "" {
+		return file.NewPath
+	}
+	return file.OldPath
+}
+
+func formatFileOp(op diffview.FileOp) string {
+	switch op {
+	case diffview.FileAdded:
+		return "added"
+	case diffview.FileDeleted:
+		return "deleted"
+	case diffview.FileModified:
+		return "modified"
+	case diffview.FileRenamed:
+		return "renamed"
+	case diffview.FileCopied:
+		return "copied"
+	default:
+		return "modified"
+	}
+}
+
+func formatLinePrefix(lt diffview.LineType) string {
+	switch lt {
+	case diffview.LineAdded:
+		return "+"
+	case diffview.LineDeleted:
+		return "-"
+	default:
+		return " "
+	}
+}
+
 // View implements tea.Model.
 func (m EvalModel) View() string {
 	if !m.ready {
@@ -578,7 +710,7 @@ func (m EvalModel) renderStatusBar() string {
 	caseInfo := fmt.Sprintf("case %d/%d", m.currentIndex+1, len(m.cases))
 	progress := fmt.Sprintf("%d/%d reviewed", judged, len(m.cases))
 	indicatorBar := strings.Join(indicators, " ")
-	help := "[d]iff [s]tory [p]ass [f]ail [c]ritique [j/k]nav [u/U]unjudged [q]uit"
+	help := "[d]iff [s]tory [p]ass [f]ail [c]ritique [y]ank [j/k]nav [u/U]unjudged [q]uit"
 
 	return fmt.Sprintf("%s │ %s │ %s │ %s", caseInfo, progress, indicatorBar, help)
 }

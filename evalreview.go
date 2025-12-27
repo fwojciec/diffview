@@ -28,3 +28,8 @@ type JudgmentStore interface {
 	Load(path string) ([]Judgment, error)
 	Save(path string, judgments []Judgment) error
 }
+
+// Clipboard provides copy-to-clipboard functionality.
+type Clipboard interface {
+	Copy(content string) error
+}

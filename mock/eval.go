@@ -11,6 +11,7 @@ var (
 	_ diffview.EvalCaseLoader = (*EvalCaseLoader)(nil)
 	_ diffview.JudgmentStore  = (*JudgmentStore)(nil)
 	_ diffview.RubricJudge    = (*RubricJudge)(nil)
+	_ diffview.Clipboard      = (*Clipboard)(nil)
 )
 
 // EvalCaseLoader is a mock implementation of diffview.EvalCaseLoader.
@@ -43,4 +44,13 @@ type RubricJudge struct {
 
 func (j *RubricJudge) Judge(ctx context.Context, criterion, output string) (*diffview.RubricResult, error) {
 	return j.JudgeFn(ctx, criterion, output)
+}
+
+// Clipboard is a mock implementation of diffview.Clipboard.
+type Clipboard struct {
+	CopyFn func(content string) error
+}
+
+func (c *Clipboard) Copy(content string) error {
+	return c.CopyFn(content)
 }

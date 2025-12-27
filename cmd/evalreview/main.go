@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwojciec/diffview/bubbletea"
 	"github.com/fwojciec/diffview/chroma"
+	"github.com/fwojciec/diffview/clipboard"
 	"github.com/fwojciec/diffview/jsonl"
 	"github.com/fwojciec/diffview/lipgloss"
 	"github.com/fwojciec/diffview/worddiff"
@@ -81,6 +82,7 @@ func main() {
 		bubbletea.WithEvalLanguageDetector(detector),
 		bubbletea.WithEvalTokenizer(tokenizer),
 		bubbletea.WithEvalWordDiffer(worddiff.NewDiffer()),
+		bubbletea.WithClipboard(clipboard.NewPBCopy()),
 	}
 	if len(existingJudgments) > 0 {
 		opts = append(opts, bubbletea.WithExistingJudgments(existingJudgments))

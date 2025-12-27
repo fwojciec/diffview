@@ -32,6 +32,9 @@ type EvalKeyMap struct {
 	// Critique mode
 	ExitCritique key.Binding
 
+	// Export
+	CopyCase key.Binding
+
 	// General
 	Quit key.Binding
 }
@@ -102,6 +105,10 @@ func DefaultEvalKeyMap() EvalKeyMap {
 		ExitCritique: key.NewBinding(
 			key.WithKeys("esc"),
 			key.WithHelp("esc", "exit critique mode"),
+		),
+		CopyCase: key.NewBinding(
+			key.WithKeys("y"),
+			key.WithHelp("y", "copy case to clipboard"),
 		),
 		Quit: key.NewBinding(
 			key.WithKeys("q", "ctrl+c"),
