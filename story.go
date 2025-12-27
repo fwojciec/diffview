@@ -22,14 +22,14 @@ type Analysis struct {
 
 // StoryAnalysis describes the narrative structure of a code change.
 type StoryAnalysis struct {
-	ChangeType string      // e.g., "refactor", "feature", "bugfix"
-	Summary    string      // One-line description of what changed
-	Parts      []StoryPart // Ordered sequence of change components
+	ChangeType string      `json:"change_type"` // e.g., "refactor", "feature", "bugfix"
+	Summary    string      `json:"summary"`     // One-line description of what changed
+	Parts      []StoryPart `json:"parts"`       // Ordered sequence of change components
 }
 
 // StoryPart represents one component of a change story.
 type StoryPart struct {
-	Role        string   // e.g., "setup", "core", "cleanup"
-	HunkIDs     []string // References to AnnotatedHunk IDs
-	Explanation string   // Human-readable description of this part
+	Role        string   `json:"role"`        // e.g., "setup", "core", "cleanup"
+	HunkIDs     []string `json:"hunk_ids"`    // References to AnnotatedHunk IDs
+	Explanation string   `json:"explanation"` // Human-readable description of this part
 }
