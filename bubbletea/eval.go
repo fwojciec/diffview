@@ -76,7 +76,7 @@ func WithExistingJudgments(judgments []diffview.Judgment) EvalModelOption {
 	return func(m *EvalModel) {
 		for i := range judgments {
 			j := judgments[i]
-			m.judgments[j.Commit] = &j
+			m.judgments[j.CaseID] = &j
 		}
 	}
 }
@@ -223,7 +223,7 @@ func (m EvalModel) enterCritiqueMode() (tea.Model, tea.Cmd) {
 	ta.SetHeight(m.height - 6)
 
 	c := m.cases[m.currentIndex]
-	if j := m.judgments[c.Input.FirstCommitHash()]; j != nil && j.Critique != "" {
+	if j := m.judgments[c.Input.CaseID()]; j != nil && j.Critique != "" {
 		ta.SetValue(j.Critique)
 	}
 
@@ -238,18 +238,18 @@ func (m EvalModel) exitCritiqueMode() (tea.Model, tea.Cmd) {
 	// Save critique to judgment
 	if len(m.cases) > 0 {
 		c := m.cases[m.currentIndex]
-		commitHash := c.Input.FirstCommitHash()
+		caseID := c.Input.CaseID()
 		critique := m.critiqueTextarea.Value()
 
 		// Get or create judgment
-		j := m.judgments[commitHash]
+		j := m.judgments[caseID]
 		if j == nil {
 			j = &diffview.Judgment{
-				Commit:   commitHash,
+				CaseID:   caseID,
 				Index:    m.currentIndex,
 				JudgedAt: time.Now(),
 			}
-			m.judgments[commitHash] = j
+			m.judgments[caseID] = j
 		}
 		j.Critique = critique
 		j.JudgedAt = time.Now()
@@ -340,7 +340,7 @@ func (m *EvalModel) updateViewportContent() {
 	}
 
 	// Add critique if present (full text, not truncated)
-	if j := m.judgments[c.Input.FirstCommitHash()]; j != nil && j.Critique != "" {
+	if j := m.judgments[c.Input.CaseID()]; j != nil && j.Critique != "" {
 		storyContent.WriteString("\n\nCRITIQUE:\n")
 		storyContent.WriteString(j.Critique)
 	}
@@ -355,23 +355,23 @@ func (m *EvalModel) recordJudgment(pass bool) {
 	}
 
 	c := m.cases[m.currentIndex]
-	commitHash := c.Input.FirstCommitHash()
+	caseID := c.Input.CaseID()
 
 	// Preserve existing critique when toggling pass/fail
 	var critique string
-	if existing := m.judgments[commitHash]; existing != nil {
+	if existing := m.judgments[caseID]; existing != nil {
 		critique = existing.Critique
 	}
 
 	j := &diffview.Judgment{
-		Commit:   commitHash,
+		CaseID:   caseID,
 		Index:    m.currentIndex,
 		Judged:   true,
 		Pass:     pass,
 		Critique: critique,
 		JudgedAt: time.Now(),
 	}
-	m.judgments[commitHash] = j
+	m.judgments[caseID] = j
 
 	m.persistJudgments()
 }
@@ -381,7 +381,7 @@ func (m EvalModel) isUnjudged(idx int) bool {
 	if idx < 0 || idx >= len(m.cases) {
 		return false
 	}
-	j := m.judgments[m.cases[idx].Input.FirstCommitHash()]
+	j := m.judgments[m.cases[idx].Input.CaseID()]
 	return j == nil || !j.Judged
 }
 
@@ -500,7 +500,7 @@ func (m EvalModel) renderJudgmentBar() string {
 	}
 
 	c := m.cases[m.currentIndex]
-	j := m.judgments[c.Input.FirstCommitHash()]
+	j := m.judgments[c.Input.CaseID()]
 
 	passMarker := "○"
 	failMarker := "○"
@@ -534,7 +534,7 @@ func (m EvalModel) renderStatusBar() string {
 	judged := 0
 	var indicators []string
 	for _, c := range m.cases {
-		j, ok := m.judgments[c.Input.FirstCommitHash()]
+		j, ok := m.judgments[c.Input.CaseID()]
 		if !ok {
 			indicators = append(indicators, "○") // unjudged
 		} else if !j.Judged {

@@ -35,6 +35,12 @@ func (c ClassificationInput) FirstCommitHash() string {
 	return c.Commits[0].Hash
 }
 
+// CaseID returns a unique identifier for this case using repo/branch format.
+// This uniquely identifies a PR-level case for judgment linking.
+func (c ClassificationInput) CaseID() string {
+	return c.Repo + "/" + c.Branch
+}
+
 // StoryClassification is the LLM's structured output for a diff.
 type StoryClassification struct {
 	ChangeType string    `json:"change_type"` // bugfix, feature, refactor, chore, docs

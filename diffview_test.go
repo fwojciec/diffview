@@ -7,6 +7,43 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestClassificationInput_CaseID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns repo/branch format", func(t *testing.T) {
+		t.Parallel()
+
+		input := diffview.ClassificationInput{
+			Repo:   "diffview",
+			Branch: "feature-branch",
+		}
+
+		assert.Equal(t, "diffview/feature-branch", input.CaseID())
+	})
+
+	t.Run("handles empty repo", func(t *testing.T) {
+		t.Parallel()
+
+		input := diffview.ClassificationInput{
+			Repo:   "",
+			Branch: "feature-branch",
+		}
+
+		assert.Equal(t, "/feature-branch", input.CaseID())
+	})
+
+	t.Run("handles empty branch", func(t *testing.T) {
+		t.Parallel()
+
+		input := diffview.ClassificationInput{
+			Repo:   "diffview",
+			Branch: "",
+		}
+
+		assert.Equal(t, "diffview/", input.CaseID())
+	})
+}
+
 func TestFileDiff_Stats(t *testing.T) {
 	t.Parallel()
 

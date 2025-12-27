@@ -20,8 +20,8 @@ func TestStore_Load(t *testing.T) {
 
 		dir := t.TempDir()
 		path := filepath.Join(dir, "judgments.jsonl")
-		content := `{"commit":"abc123","index":0,"pass":true,"critique":"","judged_at":"2025-01-15T10:30:00Z"}
-{"commit":"def456","index":1,"pass":false,"critique":"Missing context","judged_at":"2025-01-15T10:31:00Z"}`
+		content := `{"case_id":"repo/branch-a","index":0,"pass":true,"critique":"","judged_at":"2025-01-15T10:30:00Z"}
+{"case_id":"repo/branch-b","index":1,"pass":false,"critique":"Missing context","judged_at":"2025-01-15T10:31:00Z"}`
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 
 		store := jsonl.NewStore()
@@ -29,9 +29,9 @@ func TestStore_Load(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Len(t, judgments, 2)
-		assert.Equal(t, "abc123", judgments[0].Commit)
+		assert.Equal(t, "repo/branch-a", judgments[0].CaseID)
 		assert.True(t, judgments[0].Pass)
-		assert.Equal(t, "def456", judgments[1].Commit)
+		assert.Equal(t, "repo/branch-b", judgments[1].CaseID)
 		assert.False(t, judgments[1].Pass)
 		assert.Equal(t, "Missing context", judgments[1].Critique)
 	})
@@ -51,7 +51,7 @@ func TestStore_Load(t *testing.T) {
 
 		dir := t.TempDir()
 		path := filepath.Join(dir, "bad.jsonl")
-		content := `{"commit":"abc123","index":0}
+		content := `{"case_id":"repo/branch","index":0}
 not valid json`
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 
@@ -74,14 +74,14 @@ func TestStore_Save(t *testing.T) {
 
 		judgments := []diffview.Judgment{
 			{
-				Commit:   "abc123",
+				CaseID:   "repo/branch-a",
 				Index:    0,
 				Pass:     true,
 				Critique: "",
 				JudgedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC),
 			},
 			{
-				Commit:   "def456",
+				CaseID:   "repo/branch-b",
 				Index:    1,
 				Pass:     false,
 				Critique: "Wrong analysis",
@@ -98,9 +98,9 @@ func TestStore_Save(t *testing.T) {
 		loaded, err := store.Load(path)
 		require.NoError(t, err)
 		assert.Len(t, loaded, 2)
-		assert.Equal(t, "abc123", loaded[0].Commit)
+		assert.Equal(t, "repo/branch-a", loaded[0].CaseID)
 		assert.True(t, loaded[0].Pass)
-		assert.Equal(t, "def456", loaded[1].Commit)
+		assert.Equal(t, "repo/branch-b", loaded[1].CaseID)
 		assert.False(t, loaded[1].Pass)
 		assert.Equal(t, "Wrong analysis", loaded[1].Critique)
 	})
@@ -113,7 +113,7 @@ func TestStore_Save(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, []byte("old content"), 0o644))
 
 		judgments := []diffview.Judgment{
-			{Commit: "new123", Index: 0, Pass: true, JudgedAt: time.Now()},
+			{CaseID: "repo/new-branch", Index: 0, Pass: true, JudgedAt: time.Now()},
 		}
 
 		store := jsonl.NewStore()
@@ -124,7 +124,7 @@ func TestStore_Save(t *testing.T) {
 		loaded, err := store.Load(path)
 		require.NoError(t, err)
 		assert.Len(t, loaded, 1)
-		assert.Equal(t, "new123", loaded[0].Commit)
+		assert.Equal(t, "repo/new-branch", loaded[0].CaseID)
 	})
 
 	t.Run("creates parent directories", func(t *testing.T) {
@@ -134,7 +134,7 @@ func TestStore_Save(t *testing.T) {
 		path := filepath.Join(dir, "subdir", "nested", "judgments.jsonl")
 
 		judgments := []diffview.Judgment{
-			{Commit: "abc123", Index: 0, Pass: true, JudgedAt: time.Now()},
+			{CaseID: "repo/branch", Index: 0, Pass: true, JudgedAt: time.Now()},
 		}
 
 		store := jsonl.NewStore()

@@ -10,7 +10,7 @@ type EvalCase struct {
 
 // Judgment represents a human reviewer's evaluation of an EvalCase.
 type Judgment struct {
-	Commit   string    `json:"commit"`    // Links to EvalCase.Input.Commit.Hash
+	CaseID   string    `json:"case_id"`   // Links to EvalCase.Input.CaseID() (repo/branch)
 	Index    int       `json:"index"`     // Position in input file (0-based)
 	Judged   bool      `json:"judged"`    // Whether pass/fail has been explicitly set
 	Pass     bool      `json:"pass"`      // Whether the classification is acceptable
