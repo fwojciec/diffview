@@ -341,3 +341,235 @@ func TestEvalModel_JudgmentUpdatesProgress(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestEvalModel_StatusBarShowsJudgmentIndicators(t *testing.T) {
+	t.Parallel()
+
+	cases := []diffview.EvalCase{
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case1"}}, Story: &diffview.StoryClassification{Summary: "Case 1"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case2"}}, Story: &diffview.StoryClassification{Summary: "Case 2"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case3"}}, Story: &diffview.StoryClassification{Summary: "Case 3"}},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Initially all unjudged - should show 3 ○ indicators
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("○ ○ ○"))
+	})
+
+	// Mark first as pass - should show ✓ ○ ○
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("✓ ○ ○"))
+	})
+
+	// Navigate to second and mark as fail - should show ✓ ✗ ○
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("✓ ✗ ○"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_StatusBarShowsCritiqueIndicator(t *testing.T) {
+	t.Parallel()
+
+	cases := []diffview.EvalCase{
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case1"}}, Story: &diffview.StoryClassification{Summary: "Case 1"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case2"}}, Story: &diffview.StoryClassification{Summary: "Case 2"}},
+	}
+
+	// Pre-load with a critique-only judgment (has critique but no pass/fail yet)
+	judgments := []diffview.Judgment{
+		{Commit: "case1", Critique: "Some critique text"},
+	}
+
+	m := bubbletea.NewEvalModel(cases, bubbletea.WithExistingJudgments(judgments))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// First case has critique without pass/fail - should show ● ○
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("● ○"))
+	})
+
+	// Mark as pass - should now show ✓ ○
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("✓ ○"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_JumpToNextUnjudged(t *testing.T) {
+	t.Parallel()
+
+	cases := []diffview.EvalCase{
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case1"}}, Story: &diffview.StoryClassification{Summary: "Case 1"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case2"}}, Story: &diffview.StoryClassification{Summary: "Case 2"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case3"}}, Story: &diffview.StoryClassification{Summary: "Case 3"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case4"}}, Story: &diffview.StoryClassification{Summary: "Case 4"}},
+	}
+
+	// Pre-load judgments for cases 1 and 3 (indices 0 and 2)
+	judgments := []diffview.Judgment{
+		{Commit: "case1", Judged: true, Pass: true},
+		{Commit: "case3", Judged: true, Pass: false},
+	}
+
+	m := bubbletea.NewEvalModel(cases, bubbletea.WithExistingJudgments(judgments))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Starts on case 1, which is judged
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Case 1"))
+	})
+
+	// Press 'u' to jump to next unjudged - should go to case 2
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Case 2"))
+	})
+
+	// Press 'u' again - should jump to case 4 (case 3 is judged)
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Case 4"))
+	})
+
+	// Press 'u' again - should wrap to case 2 (first unjudged)
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Case 2"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_JumpToPrevUnjudged(t *testing.T) {
+	t.Parallel()
+
+	cases := []diffview.EvalCase{
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case1"}}, Story: &diffview.StoryClassification{Summary: "Case 1"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case2"}}, Story: &diffview.StoryClassification{Summary: "Case 2"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case3"}}, Story: &diffview.StoryClassification{Summary: "Case 3"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case4"}}, Story: &diffview.StoryClassification{Summary: "Case 4"}},
+	}
+
+	// Pre-load judgments for cases 1 and 3 (indices 0 and 2)
+	judgments := []diffview.Judgment{
+		{Commit: "case1", Judged: true, Pass: true},
+		{Commit: "case3", Judged: true, Pass: false},
+	}
+
+	m := bubbletea.NewEvalModel(cases, bubbletea.WithExistingJudgments(judgments))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Navigate to case 3 first
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Case 1"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Case 3"))
+	})
+
+	// Press 'U' to jump to previous unjudged - should go to case 2
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'U'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Case 2"))
+	})
+
+	// Press 'U' again - should wrap to case 4 (last unjudged)
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'U'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Case 4"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_StoryPanelShowsFullCritique(t *testing.T) {
+	t.Parallel()
+
+	longCritique := "This is a very long critique that should be displayed in full in the story panel without any truncation. It contains multiple sentences and detailed feedback about the classification quality."
+
+	cases := []diffview.EvalCase{
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case1"}}, Story: &diffview.StoryClassification{Summary: "Test Story"}},
+	}
+
+	// Pre-load with a judgment that has a long critique
+	judgments := []diffview.Judgment{
+		{Commit: "case1", Judged: true, Pass: false, Critique: longCritique},
+	}
+
+	m := bubbletea.NewEvalModel(cases, bubbletea.WithExistingJudgments(judgments))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(120, 40),
+	)
+
+	// Full critique should appear in output (in the story panel)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("CRITIQUE:")) &&
+			bytes.Contains(out, []byte("without any truncation"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_JudgmentBarWithCritiqueOnly(t *testing.T) {
+	t.Parallel()
+
+	cases := []diffview.EvalCase{
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "case1"}}, Story: &diffview.StoryClassification{Summary: "Case 1"}},
+	}
+
+	// Case has critique but Judged is false (not explicitly passed/failed)
+	judgments := []diffview.Judgment{
+		{Commit: "case1", Judged: false, Critique: "Some critique text"},
+	}
+
+	m := bubbletea.NewEvalModel(cases, bubbletea.WithExistingJudgments(judgments))
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Judgment bar should show both markers as empty (not filled)
+	// since Judged is false
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		// Should show empty circles for pass/fail, but critique text
+		return bytes.Contains(out, []byte("○ Pass  ○ Fail")) &&
+			bytes.Contains(out, []byte("Critique: Some critique text"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}

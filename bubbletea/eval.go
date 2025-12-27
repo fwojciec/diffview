@@ -145,6 +145,20 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case key.Matches(msg, m.keymap.NextUnjudged):
+		if idx := m.findNextUnjudged(); idx != -1 && idx != m.currentIndex {
+			m.currentIndex = idx
+			m.updateViewportContent()
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keymap.PrevUnjudged):
+		if idx := m.findPrevUnjudged(); idx != -1 && idx != m.currentIndex {
+			m.currentIndex = idx
+			m.updateViewportContent()
+		}
+		return m, nil
+
 	case key.Matches(msg, m.keymap.DiffPanel):
 		m.activePanel = PanelDiff
 		return m, nil
@@ -298,8 +312,7 @@ func (m *EvalModel) updateViewportContent() {
 			for _, line := range hunk.Lines {
 				prefix := linePrefixFor(line.Type)
 				diffContent.WriteString(prefix)
-				diffContent.WriteString(line.Content)
-				diffContent.WriteString("\n")
+				diffContent.WriteString(line.Content) // Content already includes newline
 			}
 		}
 	}
@@ -325,6 +338,13 @@ func (m *EvalModel) updateViewportContent() {
 	} else {
 		storyContent.WriteString("[Not yet classified]")
 	}
+
+	// Add critique if present (full text, not truncated)
+	if j := m.judgments[c.Input.Commit.Hash]; j != nil && j.Critique != "" {
+		storyContent.WriteString("\n\nCRITIQUE:\n")
+		storyContent.WriteString(j.Critique)
+	}
+
 	m.storyViewport.SetContent(storyContent.String())
 	m.storyViewport.GotoTop()
 }
@@ -346,6 +366,7 @@ func (m *EvalModel) recordJudgment(pass bool) {
 	j := &diffview.Judgment{
 		Commit:   commitHash,
 		Index:    m.currentIndex,
+		Judged:   true,
 		Pass:     pass,
 		Critique: critique,
 		JudgedAt: time.Now(),
@@ -353,6 +374,49 @@ func (m *EvalModel) recordJudgment(pass bool) {
 	m.judgments[commitHash] = j
 
 	m.persistJudgments()
+}
+
+// isUnjudged returns true if the case at the given index hasn't been judged.
+func (m EvalModel) isUnjudged(idx int) bool {
+	if idx < 0 || idx >= len(m.cases) {
+		return false
+	}
+	j := m.judgments[m.cases[idx].Input.Commit.Hash]
+	return j == nil || !j.Judged
+}
+
+// findNextUnjudged returns the index of the next unjudged case, wrapping around.
+// Returns -1 if no unjudged cases exist.
+func (m EvalModel) findNextUnjudged() int {
+	n := len(m.cases)
+	if n == 0 {
+		return -1
+	}
+	// Search from current+1 to end, then from start to current
+	for i := 1; i <= n; i++ {
+		idx := (m.currentIndex + i) % n
+		if m.isUnjudged(idx) {
+			return idx
+		}
+	}
+	return -1
+}
+
+// findPrevUnjudged returns the index of the previous unjudged case, wrapping around.
+// Returns -1 if no unjudged cases exist.
+func (m EvalModel) findPrevUnjudged() int {
+	n := len(m.cases)
+	if n == 0 {
+		return -1
+	}
+	// Search backwards from current-1 to start, then from end to current
+	for i := 1; i <= n; i++ {
+		idx := (m.currentIndex - i + n) % n
+		if m.isUnjudged(idx) {
+			return idx
+		}
+	}
+	return -1
 }
 
 func (m *EvalModel) persistJudgments() {
@@ -443,10 +507,12 @@ func (m EvalModel) renderJudgmentBar() string {
 	critique := "[not set]"
 
 	if j != nil {
-		if j.Pass {
-			passMarker = "●"
-		} else {
-			failMarker = "●"
+		if j.Judged {
+			if j.Pass {
+				passMarker = "●"
+			} else {
+				failMarker = "●"
+			}
 		}
 		if j.Critique != "" {
 			critique = j.Critique
@@ -464,17 +530,30 @@ func (m EvalModel) renderStatusBar() string {
 		return "No cases"
 	}
 
-	// Count judged cases
+	// Count judged cases and build indicator string
 	judged := 0
+	var indicators []string
 	for _, c := range m.cases {
-		if _, ok := m.judgments[c.Input.Commit.Hash]; ok {
+		j, ok := m.judgments[c.Input.Commit.Hash]
+		if !ok {
+			indicators = append(indicators, "○") // unjudged
+		} else if !j.Judged {
+			// Has judgment record but not explicitly passed/failed
+			indicators = append(indicators, "●") // partial-judgment
+		} else {
 			judged++
+			if j.Pass {
+				indicators = append(indicators, "✓") // pass
+			} else {
+				indicators = append(indicators, "✗") // fail
+			}
 		}
 	}
 
 	caseInfo := fmt.Sprintf("case %d/%d", m.currentIndex+1, len(m.cases))
 	progress := fmt.Sprintf("%d/%d reviewed", judged, len(m.cases))
-	help := "[d]iff [s]tory [p]ass [f]ail [c]ritique [j/k]nav [q]uit"
+	indicatorBar := strings.Join(indicators, " ")
+	help := "[d]iff [s]tory [p]ass [f]ail [c]ritique [j/k]nav [u/U]unjudged [q]uit"
 
-	return fmt.Sprintf("%s │ %s │ %s", caseInfo, progress, help)
+	return fmt.Sprintf("%s │ %s │ %s │ %s", caseInfo, progress, indicatorBar, help)
 }
