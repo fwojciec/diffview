@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -883,4 +884,52 @@ new file mode 100644
 	assert.Contains(t, output, `"message":"Add new feature"`)
 	// Should have the combined diff
 	assert.Contains(t, output, `"NewPath":"feature.go"`)
+}
+
+func TestClassifyRunner_Run_ParallelPreservesOrder(t *testing.T) {
+	t.Parallel()
+
+	// Create test cases with predictable ordering
+	testCases := make([]diffview.EvalCase, 10)
+	for i := range testCases {
+		testCases[i] = diffview.EvalCase{
+			Input: diffview.ClassificationInput{
+				Repo:    "testrepo",
+				Commits: []diffview.CommitBrief{{Hash: fmt.Sprintf("commit%d", i), Message: fmt.Sprintf("Message %d", i)}},
+				Diff:    diffview.Diff{Files: []diffview.FileDiff{{NewPath: fmt.Sprintf("file%d.go", i)}}},
+			},
+			Story: nil,
+		}
+	}
+
+	var stdout bytes.Buffer
+	classifier := &main.ClassifyRunner{
+		Output:  &stdout,
+		Cases:   testCases,
+		Workers: 4, // Enable parallel processing
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, input diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				// Add random delay to simulate real API calls and test ordering
+				time.Sleep(time.Duration(10-len(input.Commits[0].Hash)%10) * time.Millisecond)
+				return &diffview.StoryClassification{
+					ChangeType: "feature",
+					Summary:    "Summary for " + input.FirstCommitHash(),
+				}, nil
+			},
+		},
+		BackoffFn: func(_ int) time.Duration { return 0 },
+	}
+
+	err := classifier.Run(context.Background())
+	require.NoError(t, err)
+
+	// Output should be JSONL with lines in the same order as input
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.Len(t, lines, 10)
+
+	// Verify order matches input order
+	for i, line := range lines {
+		expectedHash := fmt.Sprintf("commit%d", i)
+		assert.Contains(t, line, fmt.Sprintf(`"hash":"%s"`, expectedHash), "line %d should contain %s", i, expectedHash)
+	}
 }
