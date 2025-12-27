@@ -11,6 +11,7 @@ require (
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20251215102626-e0db08df7383
 	github.com/muesli/termenv v0.16.0
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/sync v0.16.0
 	google.golang.org/genai v1.40.0
 )
 

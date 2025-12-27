@@ -19,6 +19,7 @@ import (
 	"github.com/fwojciec/diffview/git"
 	"github.com/fwojciec/diffview/gitdiff"
 	"github.com/fwojciec/diffview/jsonl"
+	"golang.org/x/sync/errgroup"
 )
 
 // ErrNoChanges is returned when the diff contains no changes to analyze.
@@ -218,6 +219,8 @@ type ClassifyRunner struct {
 	Cases      []diffview.EvalCase
 	Classifier diffview.StoryClassifier
 	MaxRetries int
+	// Workers sets the number of parallel workers. If <= 1, runs sequentially.
+	Workers int
 	// BackoffFn returns the backoff duration for a given attempt (1-indexed).
 	// If nil, uses exponential backoff (1s, 2s, 4s...).
 	BackoffFn func(attempt int) time.Duration
@@ -226,6 +229,13 @@ type ClassifyRunner struct {
 // Run classifies each case and writes JSONL output.
 // Cases that fail after max retries are skipped with a warning.
 func (c *ClassifyRunner) Run(ctx context.Context) error {
+	if c.Workers > 1 {
+		return c.runParallel(ctx)
+	}
+	return c.runSequential(ctx)
+}
+
+func (c *ClassifyRunner) runSequential(ctx context.Context) error {
 	encoder := json.NewEncoder(c.Output)
 	maxRetries := c.MaxRetries
 	if maxRetries == 0 {
@@ -253,6 +263,78 @@ func (c *ClassifyRunner) Run(ctx context.Context) error {
 
 		if err := encoder.Encode(evalCase); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// classifyResult holds the result of classifying a single case.
+type classifyResult struct {
+	result  *diffview.EvalCase
+	skipped bool
+	skipMsg string
+}
+
+func (c *ClassifyRunner) runParallel(ctx context.Context) error {
+	maxRetries := c.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = DefaultMaxRetries
+	}
+	errOut := c.ErrOutput
+	if errOut == nil {
+		errOut = os.Stderr
+	}
+
+	// Collect results indexed by original position
+	results := make([]classifyResult, len(c.Cases))
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(c.Workers)
+
+	for i := range c.Cases {
+		evalCase := c.Cases[i]
+
+		g.Go(func() error {
+			var result classifyResult
+
+			// Skip cases that already have a story
+			if evalCase.Story == nil {
+				story, err := c.classifyWithRetry(ctx, evalCase.Input, maxRetries)
+				if err != nil {
+					result.skipped = true
+					result.skipMsg = fmt.Sprintf("warning: skipping case %s after %d retries: %v\n",
+						evalCase.Input.FirstCommitHash(), maxRetries, err)
+				} else {
+					evalCase.Story = story
+				}
+			}
+
+			if !result.skipped {
+				result.result = &evalCase
+			}
+
+			results[i] = result
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	// Write results in order
+	encoder := json.NewEncoder(c.Output)
+	for _, r := range results {
+		if r.skipped {
+			fmt.Fprint(errOut, r.skipMsg)
+			continue
+		}
+		if r.result != nil {
+			if err := encoder.Encode(r.result); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -474,11 +556,18 @@ func runCollect(ctx context.Context) error {
 }
 
 func runClassify(ctx context.Context) error {
-	if len(os.Args) < 3 {
-		return fmt.Errorf("usage: diffstory classify <input.jsonl>")
+	fs := flag.NewFlagSet("classify", flag.ExitOnError)
+	workers := fs.Int("workers", 4, "Number of parallel workers (1 = sequential)")
+
+	if err := fs.Parse(os.Args[2:]); err != nil {
+		return err
 	}
 
-	inputPath := os.Args[2]
+	args := fs.Args()
+	if len(args) < 1 {
+		return fmt.Errorf("usage: diffstory classify [--workers N] <input.jsonl>")
+	}
+	inputPath := args[0]
 
 	// Check for API key
 	apiKey := os.Getenv("GEMINI_API_KEY")
@@ -510,6 +599,7 @@ func runClassify(ctx context.Context) error {
 		Output:     os.Stdout,
 		Cases:      cases,
 		Classifier: classifier,
+		Workers:    *workers,
 	}
 
 	return runner.Run(ctx)
