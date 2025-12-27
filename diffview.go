@@ -1,7 +1,10 @@
 // Package diffview provides domain types for parsing and viewing diffs.
 package diffview
 
-import "io/fs"
+import (
+	"context"
+	"io/fs"
+)
 
 // Diff represents a complete diff containing one or more file changes.
 type Diff struct {
@@ -88,4 +91,12 @@ type WordDiffer interface {
 	// Diff returns segments for both the old and new strings,
 	// marking which portions changed between them.
 	Diff(old, new string) (oldSegs, newSegs []Segment)
+}
+
+// GitRunner provides access to git operations for extracting commit history.
+type GitRunner interface {
+	// Log returns commit hashes from the repository at repoPath, limited to n commits.
+	Log(ctx context.Context, repoPath string, limit int) ([]string, error)
+	// Show returns the diff for a specific commit hash.
+	Show(ctx context.Context, repoPath string, hash string) (string, error)
 }
