@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -25,14 +26,11 @@ var ErrNoChanges = errors.New("no changes to analyze")
 type Collector struct {
 	Output   io.Writer
 	RepoPath string
+	RepoName string
 	Limit    int
+	MinLines int
+	MaxLines int
 	Git      diffview.GitRunner
-}
-
-// CollectedCase represents a single commit's diff for the eval dataset.
-type CollectedCase struct {
-	Commit string                   `json:"commit"`
-	Hunks  []diffview.AnnotatedHunk `json:"hunks"`
 }
 
 // Run extracts diffs from git history and writes JSONL output.
@@ -56,35 +54,55 @@ func (c *Collector) Run(ctx context.Context) error {
 			return err
 		}
 
-		var annotated []diffview.AnnotatedHunk
-		for _, file := range diff.Files {
-			filePath := file.NewPath
-			if filePath == "" {
-				filePath = file.OldPath
-			}
-			for hunkIdx, hunk := range file.Hunks {
-				annotated = append(annotated, diffview.AnnotatedHunk{
-					ID:   fmt.Sprintf("%s:h%d", filePath, hunkIdx),
-					Hunk: hunk,
-				})
-			}
-		}
-
-		// Skip commits with no hunks (e.g., merge commits)
-		if len(annotated) == 0 {
+		// Skip commits with no files (e.g., merge commits)
+		if len(diff.Files) == 0 {
 			continue
 		}
 
-		caseData := CollectedCase{
-			Commit: hash,
-			Hunks:  annotated,
+		// Count total lines changed
+		totalLines := countLinesChanged(diff)
+
+		// Apply line filters
+		if c.MinLines > 0 && totalLines < c.MinLines {
+			continue
 		}
-		if err := encoder.Encode(caseData); err != nil {
+		if c.MaxLines > 0 && totalLines > c.MaxLines {
+			continue
+		}
+
+		// Get commit message
+		message, err := c.Git.Message(ctx, c.RepoPath, hash)
+		if err != nil {
+			return err
+		}
+
+		evalCase := diffview.EvalCase{
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{
+					Hash:    hash,
+					Repo:    c.RepoName,
+					Message: message,
+				},
+				Diff: *diff,
+			},
+			Story: nil, // Not classified yet
+		}
+		if err := encoder.Encode(evalCase); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// countLinesChanged returns the total number of added + deleted lines in a diff.
+func countLinesChanged(diff *diffview.Diff) int {
+	total := 0
+	for _, file := range diff.Files {
+		added, deleted := file.Stats()
+		total += added + deleted
+	}
+	return total
 }
 
 // App encapsulates the application logic for testing.
@@ -215,6 +233,9 @@ func runAnalyze(ctx context.Context) error {
 func runCollect(ctx context.Context) error {
 	fs := flag.NewFlagSet("collect", flag.ExitOnError)
 	limit := fs.Int("limit", 50, "Maximum number of commits to extract")
+	repo := fs.String("repo", "", "Repository name (defaults to directory name)")
+	minLines := fs.Int("min-lines", 5, "Minimum lines changed (skip smaller commits)")
+	maxLines := fs.Int("max-lines", 500, "Maximum lines changed (skip larger commits)")
 
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		return err
@@ -226,10 +247,23 @@ func runCollect(ctx context.Context) error {
 		repoPath = args[0]
 	}
 
+	// Derive repo name from path if not specified
+	repoName := *repo
+	if repoName == "" {
+		absPath, err := filepath.Abs(repoPath)
+		if err != nil {
+			return fmt.Errorf("failed to resolve repo path: %w", err)
+		}
+		repoName = filepath.Base(absPath)
+	}
+
 	collector := &Collector{
 		Output:   os.Stdout,
 		RepoPath: repoPath,
+		RepoName: repoName,
 		Limit:    *limit,
+		MinLines: *minLines,
+		MaxLines: *maxLines,
 		Git:      git.NewRunner(),
 	}
 

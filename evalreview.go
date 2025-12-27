@@ -2,18 +2,17 @@ package diffview
 
 import "time"
 
-// EvalCase represents a case for evaluation: a diff with its LLM-generated story analysis.
+// EvalCase represents a case for evaluation: a diff with its LLM-generated classification.
 type EvalCase struct {
-	Commit string          `json:"commit"` // Git commit hash
-	Hunks  []AnnotatedHunk `json:"hunks"`  // The diff hunks
-	Story  StoryAnalysis   `json:"story"`  // The LLM-generated analysis to evaluate
+	Input ClassificationInput  `json:"input"` // The input for classification
+	Story *StoryClassification `json:"story"` // The LLM-generated classification (nil if not yet classified)
 }
 
 // Judgment represents a human reviewer's evaluation of an EvalCase.
 type Judgment struct {
-	Commit   string    `json:"commit"`    // Links to EvalCase.Commit
+	Commit   string    `json:"commit"`    // Links to EvalCase.Input.Commit.Hash
 	Index    int       `json:"index"`     // Position in input file (0-based)
-	Pass     bool      `json:"pass"`      // Whether the story analysis is acceptable
+	Pass     bool      `json:"pass"`      // Whether the classification is acceptable
 	Critique string    `json:"critique"`  // Explanation for failure (empty if pass)
 	JudgedAt time.Time `json:"judged_at"` // When judgment was recorded
 }

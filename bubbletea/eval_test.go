@@ -16,8 +16,10 @@ func TestEvalModel_Init(t *testing.T) {
 
 	cases := []diffview.EvalCase{
 		{
-			Commit: "abc123",
-			Story: diffview.StoryAnalysis{
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{Hash: "abc123"},
+			},
+			Story: &diffview.StoryClassification{
 				ChangeType: "refactor",
 				Summary:    "Refactored foo",
 			},
@@ -44,8 +46,10 @@ func TestEvalModel_ViewAfterReady(t *testing.T) {
 
 	cases := []diffview.EvalCase{
 		{
-			Commit: "abc123",
-			Story: diffview.StoryAnalysis{
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{Hash: "abc123"},
+			},
+			Story: &diffview.StoryClassification{
 				ChangeType: "refactor",
 				Summary:    "Refactored foo for better performance",
 			},
@@ -83,20 +87,26 @@ func TestEvalModel_NavigationWithJK(t *testing.T) {
 
 	cases := []diffview.EvalCase{
 		{
-			Commit: "first123",
-			Story: diffview.StoryAnalysis{
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{Hash: "first123"},
+			},
+			Story: &diffview.StoryClassification{
 				Summary: "First case summary",
 			},
 		},
 		{
-			Commit: "second456",
-			Story: diffview.StoryAnalysis{
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{Hash: "second456"},
+			},
+			Story: &diffview.StoryClassification{
 				Summary: "Second case summary",
 			},
 		},
 		{
-			Commit: "third789",
-			Story: diffview.StoryAnalysis{
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{Hash: "third789"},
+			},
+			Story: &diffview.StoryClassification{
 				Summary: "Third case summary",
 			},
 		},
@@ -137,8 +147,8 @@ func TestEvalModel_NavigationBetweenCases(t *testing.T) {
 
 	// Tests navigation between cases: forward with j, backward with k.
 	cases := []diffview.EvalCase{
-		{Commit: "first", Story: diffview.StoryAnalysis{Summary: "First summary"}},
-		{Commit: "second", Story: diffview.StoryAnalysis{Summary: "Second summary"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "first"}}, Story: &diffview.StoryClassification{Summary: "First summary"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "second"}}, Story: &diffview.StoryClassification{Summary: "Second summary"}},
 	}
 
 	m := bubbletea.NewEvalModel(cases)
@@ -174,18 +184,24 @@ func TestEvalModel_PanelSwitching(t *testing.T) {
 
 	cases := []diffview.EvalCase{
 		{
-			Commit: "abc123",
-			Hunks: []diffview.AnnotatedHunk{
-				{
-					ID: "h0",
-					Hunk: diffview.Hunk{
-						Lines: []diffview.Line{
-							{Type: diffview.LineContext, Content: "diff content here"},
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{Hash: "abc123"},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "test.go",
+							Hunks: []diffview.Hunk{
+								{
+									Lines: []diffview.Line{
+										{Type: diffview.LineContext, Content: "diff content here"},
+									},
+								},
+							},
 						},
 					},
 				},
 			},
-			Story: diffview.StoryAnalysis{
+			Story: &diffview.StoryClassification{
 				Summary: "Story content here",
 			},
 		},
@@ -225,8 +241,8 @@ func TestEvalModel_PassJudgment(t *testing.T) {
 
 	cases := []diffview.EvalCase{
 		{
-			Commit: "abc123",
-			Story:  diffview.StoryAnalysis{Summary: "Test story"},
+			Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "abc123"}},
+			Story: &diffview.StoryClassification{Summary: "Test story"},
 		},
 	}
 
@@ -257,8 +273,8 @@ func TestEvalModel_FailJudgment(t *testing.T) {
 
 	cases := []diffview.EvalCase{
 		{
-			Commit: "abc123",
-			Story:  diffview.StoryAnalysis{Summary: "Test story"},
+			Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "abc123"}},
+			Story: &diffview.StoryClassification{Summary: "Test story"},
 		},
 	}
 
@@ -288,8 +304,8 @@ func TestEvalModel_JudgmentUpdatesProgress(t *testing.T) {
 	t.Parallel()
 
 	cases := []diffview.EvalCase{
-		{Commit: "abc", Story: diffview.StoryAnalysis{Summary: "Case A"}},
-		{Commit: "def", Story: diffview.StoryAnalysis{Summary: "Case B"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "abc"}}, Story: &diffview.StoryClassification{Summary: "Case A"}},
+		{Input: diffview.ClassificationInput{Commit: diffview.CommitInfo{Hash: "def"}}, Story: &diffview.StoryClassification{Summary: "Case B"}},
 	}
 
 	m := bubbletea.NewEvalModel(cases)
