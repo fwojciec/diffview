@@ -52,19 +52,21 @@ func (a *App) Run(ctx context.Context) error {
 
 	// Annotate hunks with IDs that include file path for context
 	var annotated []diffview.AnnotatedHunk
-	hunkIdx := 0
 	for _, file := range diff.Files {
 		filePath := file.NewPath
 		if filePath == "" {
 			filePath = file.OldPath // For deleted files
 		}
-		for _, hunk := range file.Hunks {
+		for hunkIdx, hunk := range file.Hunks {
 			annotated = append(annotated, diffview.AnnotatedHunk{
 				ID:   fmt.Sprintf("%s:h%d", filePath, hunkIdx),
 				Hunk: hunk,
 			})
-			hunkIdx++
 		}
+	}
+
+	if len(annotated) == 0 {
+		return ErrNoChanges
 	}
 
 	analysis, err := a.Generator.Generate(ctx, annotated)

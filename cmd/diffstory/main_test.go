@@ -179,7 +179,7 @@ func TestApp_Run_FileNotFound(t *testing.T) {
 func TestApp_Run_EmptyDiff(t *testing.T) {
 	t.Parallel()
 
-	// A valid diff header but no actual changes
+	// Empty input - no diff content at all
 	diffInput := ""
 
 	var stdout bytes.Buffer
