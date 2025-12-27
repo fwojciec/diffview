@@ -215,7 +215,8 @@ index 0000000..e69de29
 
 	var stdout bytes.Buffer
 	collector := &main.Collector{
-		Output: &stdout,
+		Output:   &stdout,
+		RepoName: "testrepo",
 		Git: &mock.GitRunner{
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return []string{"abc1234"}, nil
@@ -225,6 +226,9 @@ index 0000000..e69de29
 					return diffOutput, nil
 				}
 				return "", errors.New("unknown hash")
+			},
+			MessageFn: func(_ context.Context, _ string, hash string) (string, error) {
+				return "Add hello function", nil
 			},
 		},
 	}
@@ -237,9 +241,11 @@ index 0000000..e69de29
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	require.Len(t, lines, 1)
 
-	// Line should contain commit hash and hunks
-	assert.Contains(t, lines[0], `"commit":"abc1234"`)
-	assert.Contains(t, lines[0], `"hunks"`)
+	// Line should contain commit hash and diff files
+	assert.Contains(t, lines[0], `"Hash":"abc1234"`)
+	assert.Contains(t, lines[0], `"Repo":"testrepo"`)
+	assert.Contains(t, lines[0], `"Message":"Add hello function"`)
+	assert.Contains(t, lines[0], `"Files"`)
 }
 
 func TestCollector_Run_MultipleCommits(t *testing.T) {
@@ -262,7 +268,8 @@ new file mode 100644
 
 	var stdout bytes.Buffer
 	collector := &main.Collector{
-		Output: &stdout,
+		Output:   &stdout,
+		RepoName: "testrepo",
 		Git: &mock.GitRunner{
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return []string{"commit1", "commit2"}, nil
@@ -276,6 +283,9 @@ new file mode 100644
 				}
 				return "", errors.New("unknown hash")
 			},
+			MessageFn: func(_ context.Context, _ string, hash string) (string, error) {
+				return "Commit message for " + hash, nil
+			},
 		},
 	}
 
@@ -284,11 +294,11 @@ new file mode 100644
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 	require.Len(t, lines, 2)
-	assert.Contains(t, lines[0], `"commit":"commit1"`)
-	assert.Contains(t, lines[1], `"commit":"commit2"`)
+	assert.Contains(t, lines[0], `"Hash":"commit1"`)
+	assert.Contains(t, lines[1], `"Hash":"commit2"`)
 }
 
-func TestCollector_Run_AnnotatesHunksWithFilePath(t *testing.T) {
+func TestCollector_Run_IncludesFilePaths(t *testing.T) {
 	t.Parallel()
 
 	diffOutput := `diff --git a/src/auth/login.go b/src/auth/login.go
@@ -303,13 +313,17 @@ new file mode 100644
 
 	var stdout bytes.Buffer
 	collector := &main.Collector{
-		Output: &stdout,
+		Output:   &stdout,
+		RepoName: "testrepo",
 		Git: &mock.GitRunner{
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return []string{"abc"}, nil
 			},
 			ShowFn: func(_ context.Context, _ string, _ string) (string, error) {
 				return diffOutput, nil
+			},
+			MessageFn: func(_ context.Context, _ string, _ string) (string, error) {
+				return "Add login", nil
 			},
 		},
 	}
@@ -318,8 +332,8 @@ new file mode 100644
 	require.NoError(t, err)
 
 	output := stdout.String()
-	// Hunk ID should include file path
-	assert.Contains(t, output, `"ID":"src/auth/login.go:h0"`)
+	// Output should include file path in diff structure
+	assert.Contains(t, output, `"NewPath":"src/auth/login.go"`)
 }
 
 func TestCollector_Run_GitLogError(t *testing.T) {
@@ -327,12 +341,16 @@ func TestCollector_Run_GitLogError(t *testing.T) {
 
 	var stdout bytes.Buffer
 	collector := &main.Collector{
-		Output: &stdout,
+		Output:   &stdout,
+		RepoName: "testrepo",
 		Git: &mock.GitRunner{
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return nil, errors.New("not a git repository")
 			},
 			ShowFn: func(_ context.Context, _ string, _ string) (string, error) {
+				return "", nil
+			},
+			MessageFn: func(_ context.Context, _ string, _ string) (string, error) {
 				return "", nil
 			},
 		},
@@ -348,13 +366,17 @@ func TestCollector_Run_GitShowError(t *testing.T) {
 
 	var stdout bytes.Buffer
 	collector := &main.Collector{
-		Output: &stdout,
+		Output:   &stdout,
+		RepoName: "testrepo",
 		Git: &mock.GitRunner{
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return []string{"abc123"}, nil
 			},
 			ShowFn: func(_ context.Context, _ string, _ string) (string, error) {
 				return "", errors.New("commit not found")
+			},
+			MessageFn: func(_ context.Context, _ string, _ string) (string, error) {
+				return "", nil
 			},
 		},
 	}
@@ -364,7 +386,7 @@ func TestCollector_Run_GitShowError(t *testing.T) {
 	assert.Contains(t, err.Error(), "commit not found")
 }
 
-func TestCollector_Run_SkipsCommitsWithoutHunks(t *testing.T) {
+func TestCollector_Run_SkipsCommitsWithoutFiles(t *testing.T) {
 	t.Parallel()
 
 	// Merge commits often have no diff
@@ -379,7 +401,8 @@ new file mode 100644
 
 	var stdout bytes.Buffer
 	collector := &main.Collector{
-		Output: &stdout,
+		Output:   &stdout,
+		RepoName: "testrepo",
 		Git: &mock.GitRunner{
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				return []string{"merge-commit", "real-commit"}, nil
@@ -390,6 +413,9 @@ new file mode 100644
 				}
 				return realDiff, nil
 			},
+			MessageFn: func(_ context.Context, _ string, hash string) (string, error) {
+				return "Message for " + hash, nil
+			},
 		},
 	}
 
@@ -399,5 +425,38 @@ new file mode 100644
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 	// Should only have 1 line (real commit), merge commit skipped
 	require.Len(t, lines, 1)
-	assert.Contains(t, lines[0], `"commit":"real-commit"`)
+	assert.Contains(t, lines[0], `"Hash":"real-commit"`)
+}
+
+func TestCollector_Run_GitMessageError(t *testing.T) {
+	t.Parallel()
+
+	diffOutput := `diff --git a/a.go b/a.go
+new file mode 100644
+--- /dev/null
++++ b/a.go
+@@ -0,0 +1 @@
++package a
+`
+
+	var stdout bytes.Buffer
+	collector := &main.Collector{
+		Output:   &stdout,
+		RepoName: "testrepo",
+		Git: &mock.GitRunner{
+			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return []string{"abc123"}, nil
+			},
+			ShowFn: func(_ context.Context, _ string, _ string) (string, error) {
+				return diffOutput, nil
+			},
+			MessageFn: func(_ context.Context, _ string, _ string) (string, error) {
+				return "", errors.New("failed to get commit message")
+			},
+		},
+	}
+
+	err := collector.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get commit message")
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -39,8 +40,9 @@ type EvalModel struct {
 	currentIndex int
 
 	// UI Components
-	diffViewport  viewport.Model
-	storyViewport viewport.Model
+	diffViewport     viewport.Model
+	storyViewport    viewport.Model
+	critiqueTextarea textarea.Model
 
 	// State
 	activePanel Panel
@@ -174,6 +176,9 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keymap.Fail):
 		m.recordJudgment(false)
 		return m, nil
+
+	case key.Matches(msg, m.keymap.Critique):
+		return m.enterCritiqueMode()
 	}
 
 	return m, nil
@@ -182,9 +187,63 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m EvalModel) handleCritiqueKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keymap.ExitCritique):
-		m.mode = ModeReview
+		return m.exitCritiqueMode()
+	}
+
+	// Pass all other keys to textarea
+	var cmd tea.Cmd
+	m.critiqueTextarea, cmd = m.critiqueTextarea.Update(msg)
+	return m, cmd
+}
+
+func (m EvalModel) enterCritiqueMode() (tea.Model, tea.Cmd) {
+	if len(m.cases) == 0 {
 		return m, nil
 	}
+
+	// Initialize textarea with existing critique if any
+	ta := textarea.New()
+	ta.Placeholder = "Enter detailed critique..."
+	ta.ShowLineNumbers = false
+	ta.SetWidth(m.width - 4)
+	ta.SetHeight(m.height - 6)
+
+	c := m.cases[m.currentIndex]
+	if j := m.judgments[c.Input.Commit.Hash]; j != nil && j.Critique != "" {
+		ta.SetValue(j.Critique)
+	}
+
+	ta.Focus()
+	m.critiqueTextarea = ta
+	m.mode = ModeCritique
+
+	return m, textarea.Blink
+}
+
+func (m EvalModel) exitCritiqueMode() (tea.Model, tea.Cmd) {
+	// Save critique to judgment
+	if len(m.cases) > 0 {
+		c := m.cases[m.currentIndex]
+		commitHash := c.Input.Commit.Hash
+		critique := m.critiqueTextarea.Value()
+
+		// Get or create judgment
+		j := m.judgments[commitHash]
+		if j == nil {
+			j = &diffview.Judgment{
+				Commit:   commitHash,
+				Index:    m.currentIndex,
+				JudgedAt: time.Now(),
+			}
+			m.judgments[commitHash] = j
+		}
+		j.Critique = critique
+		j.JudgedAt = time.Now()
+
+		m.persistJudgments()
+	}
+
+	m.mode = ModeReview
 	return m, nil
 }
 
@@ -225,29 +284,46 @@ func (m *EvalModel) updateViewportContent() {
 
 	c := m.cases[m.currentIndex]
 
-	// Render diff content
+	// Render diff content from ClassificationInput
 	var diffContent strings.Builder
-	for _, ah := range c.Hunks {
-		diffContent.WriteString(formatHunkHeader(ah.Hunk))
-		diffContent.WriteString("\n")
-		for _, line := range ah.Hunk.Lines {
-			prefix := linePrefixFor(line.Type)
-			diffContent.WriteString(prefix)
-			diffContent.WriteString(line.Content)
+	for _, file := range c.Input.Diff.Files {
+		path := file.NewPath
+		if path == "" {
+			path = file.OldPath // For deleted files
+		}
+		diffContent.WriteString(fmt.Sprintf("=== %s ===\n", path))
+		for _, hunk := range file.Hunks {
+			diffContent.WriteString(formatHunkHeader(hunk))
 			diffContent.WriteString("\n")
+			for _, line := range hunk.Lines {
+				prefix := linePrefixFor(line.Type)
+				diffContent.WriteString(prefix)
+				diffContent.WriteString(line.Content)
+				diffContent.WriteString("\n")
+			}
 		}
 	}
 	m.diffViewport.SetContent(diffContent.String())
 	m.diffViewport.GotoTop()
 
-	// Render story content
+	// Render story content from StoryClassification
 	var storyContent strings.Builder
-	storyContent.WriteString(fmt.Sprintf("[%s] %s\n\n", c.Story.ChangeType, c.Story.Summary))
-	for _, part := range c.Story.Parts {
-		storyContent.WriteString(fmt.Sprintf("• %s: %s\n", part.Role, part.Explanation))
-		if len(part.HunkIDs) > 0 {
-			storyContent.WriteString(fmt.Sprintf("  hunks: %s\n", strings.Join(part.HunkIDs, ", ")))
+	if c.Story != nil {
+		storyContent.WriteString(fmt.Sprintf("[%s] %s\n", c.Story.ChangeType, c.Story.Narrative))
+		storyContent.WriteString(fmt.Sprintf("%s\n\n", c.Story.Summary))
+		for _, section := range c.Story.Sections {
+			storyContent.WriteString(fmt.Sprintf("• %s: %s\n", section.Role, section.Title))
+			storyContent.WriteString(fmt.Sprintf("  %s\n", section.Explanation))
+			if len(section.Hunks) > 0 {
+				var hunkRefs []string
+				for _, h := range section.Hunks {
+					hunkRefs = append(hunkRefs, fmt.Sprintf("%s:H%d", h.File, h.HunkIndex))
+				}
+				storyContent.WriteString(fmt.Sprintf("  hunks: %s\n", strings.Join(hunkRefs, ", ")))
+			}
 		}
+	} else {
+		storyContent.WriteString("[Not yet classified]")
 	}
 	m.storyViewport.SetContent(storyContent.String())
 	m.storyViewport.GotoTop()
@@ -259,21 +335,22 @@ func (m *EvalModel) recordJudgment(pass bool) {
 	}
 
 	c := m.cases[m.currentIndex]
+	commitHash := c.Input.Commit.Hash
 
 	// Preserve existing critique when toggling pass/fail
 	var critique string
-	if existing := m.judgments[c.Commit]; existing != nil {
+	if existing := m.judgments[commitHash]; existing != nil {
 		critique = existing.Critique
 	}
 
 	j := &diffview.Judgment{
-		Commit:   c.Commit,
+		Commit:   commitHash,
 		Index:    m.currentIndex,
 		Pass:     pass,
 		Critique: critique,
 		JudgedAt: time.Now(),
 	}
-	m.judgments[c.Commit] = j
+	m.judgments[commitHash] = j
 
 	m.persistJudgments()
 }
@@ -299,6 +376,11 @@ func (m *EvalModel) persistJudgments() {
 func (m EvalModel) View() string {
 	if !m.ready {
 		return "Loading..."
+	}
+
+	// Critique mode shows full-screen textarea
+	if m.mode == ModeCritique {
+		return m.renderCritiqueView()
 	}
 
 	var s strings.Builder
@@ -327,6 +409,19 @@ func (m EvalModel) View() string {
 	return s.String()
 }
 
+func (m EvalModel) renderCritiqueView() string {
+	var s strings.Builder
+
+	header := lipgloss.NewStyle().Bold(true).Render("CRITIQUE")
+	s.WriteString(header)
+	s.WriteString("\n\n")
+	s.WriteString(m.critiqueTextarea.View())
+	s.WriteString("\n\n")
+	s.WriteString(lipgloss.NewStyle().Faint(true).Render("[Esc] save and exit"))
+
+	return s.String()
+}
+
 func (m EvalModel) renderPanelHeader(name string, active bool) string {
 	style := lipgloss.NewStyle().Bold(true)
 	if active {
@@ -341,7 +436,7 @@ func (m EvalModel) renderJudgmentBar() string {
 	}
 
 	c := m.cases[m.currentIndex]
-	j := m.judgments[c.Commit]
+	j := m.judgments[c.Input.Commit.Hash]
 
 	passMarker := "○"
 	failMarker := "○"
@@ -372,14 +467,14 @@ func (m EvalModel) renderStatusBar() string {
 	// Count judged cases
 	judged := 0
 	for _, c := range m.cases {
-		if _, ok := m.judgments[c.Commit]; ok {
+		if _, ok := m.judgments[c.Input.Commit.Hash]; ok {
 			judged++
 		}
 	}
 
 	caseInfo := fmt.Sprintf("case %d/%d", m.currentIndex+1, len(m.cases))
 	progress := fmt.Sprintf("%d/%d reviewed", judged, len(m.cases))
-	help := "[d]iff [s]tory [p]ass [f]ail [j/k]nav [q]uit"
+	help := "[d]iff [s]tory [p]ass [f]ail [c]ritique [j/k]nav [q]uit"
 
 	return fmt.Sprintf("%s │ %s │ %s", caseInfo, progress, help)
 }

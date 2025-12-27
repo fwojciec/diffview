@@ -99,4 +99,6 @@ type GitRunner interface {
 	Log(ctx context.Context, repoPath string, limit int) ([]string, error)
 	// Show returns the diff for a specific commit hash.
 	Show(ctx context.Context, repoPath string, hash string) (string, error)
+	// Message returns the commit message for a specific commit hash.
+	Message(ctx context.Context, repoPath string, hash string) (string, error)
 }
