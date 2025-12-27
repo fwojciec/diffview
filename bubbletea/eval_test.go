@@ -585,3 +585,52 @@ func TestEvalModel_JudgmentBarWithCritiqueOnly(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestEvalModel_StyledDiffRendering(t *testing.T) {
+	t.Parallel()
+
+	// Create a case with actual diff content
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath:   "test.go",
+							Operation: diffview.FileModified,
+							Hunks: []diffview.Hunk{
+								{
+									OldStart: 1,
+									OldCount: 2,
+									NewStart: 1,
+									NewCount: 2,
+									Lines: []diffview.Line{
+										{Type: diffview.LineDeleted, Content: "old line", OldLineNum: 1},
+										{Type: diffview.LineAdded, Content: "new line", NewLineNum: 1},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{Summary: "Test story"},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Should render with styled file header (box-drawing characters)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("── test.go"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}

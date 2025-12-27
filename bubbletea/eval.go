@@ -50,7 +50,11 @@ type EvalModel struct {
 	ready       bool
 
 	// Rendering
-	width, height int
+	width, height    int
+	styles           diffview.Styles
+	languageDetector diffview.LanguageDetector
+	tokenizer        diffview.Tokenizer
+	wordDiffer       diffview.WordDiffer
 
 	// Persistence
 	store      diffview.JudgmentStore
@@ -81,6 +85,34 @@ func WithExistingJudgments(judgments []diffview.Judgment) EvalModelOption {
 	}
 }
 
+// WithEvalStyles sets the diff rendering styles.
+func WithEvalStyles(s diffview.Styles) EvalModelOption {
+	return func(m *EvalModel) {
+		m.styles = s
+	}
+}
+
+// WithEvalLanguageDetector sets the language detector for syntax highlighting.
+func WithEvalLanguageDetector(d diffview.LanguageDetector) EvalModelOption {
+	return func(m *EvalModel) {
+		m.languageDetector = d
+	}
+}
+
+// WithEvalTokenizer sets the tokenizer for syntax highlighting.
+func WithEvalTokenizer(t diffview.Tokenizer) EvalModelOption {
+	return func(m *EvalModel) {
+		m.tokenizer = t
+	}
+}
+
+// WithEvalWordDiffer sets the word differ for word-level highlighting.
+func WithEvalWordDiffer(d diffview.WordDiffer) EvalModelOption {
+	return func(m *EvalModel) {
+		m.wordDiffer = d
+	}
+}
+
 // NewEvalModel creates a new EvalModel with the given cases.
 func NewEvalModel(cases []diffview.EvalCase, opts ...EvalModelOption) EvalModel {
 	m := EvalModel{
@@ -89,6 +121,7 @@ func NewEvalModel(cases []diffview.EvalCase, opts ...EvalModelOption) EvalModel 
 		activePanel: PanelDiff,
 		mode:        ModeReview,
 		keymap:      DefaultEvalKeyMap(),
+		styles:      defaultStyles(), // Use same defaults as viewer
 	}
 
 	for _, opt := range opts {
@@ -298,25 +331,17 @@ func (m *EvalModel) updateViewportContent() {
 
 	c := m.cases[m.currentIndex]
 
-	// Render diff content from ClassificationInput
-	var diffContent strings.Builder
-	for _, file := range c.Input.Diff.Files {
-		path := file.NewPath
-		if path == "" {
-			path = file.OldPath // For deleted files
-		}
-		diffContent.WriteString(fmt.Sprintf("=== %s ===\n", path))
-		for _, hunk := range file.Hunks {
-			diffContent.WriteString(formatHunkHeader(hunk))
-			diffContent.WriteString("\n")
-			for _, line := range hunk.Lines {
-				prefix := linePrefixFor(line.Type)
-				diffContent.WriteString(prefix)
-				diffContent.WriteString(line.Content) // Content already includes newline
-			}
-		}
-	}
-	m.diffViewport.SetContent(diffContent.String())
+	// Render diff content using styled renderer
+	diffContent := renderDiff(renderConfig{
+		diff:             &c.Input.Diff,
+		styles:           m.styles,
+		renderer:         nil, // Use default renderer
+		width:            m.width,
+		languageDetector: m.languageDetector,
+		tokenizer:        m.tokenizer,
+		wordDiffer:       m.wordDiffer,
+	})
+	m.diffViewport.SetContent(diffContent)
 	m.diffViewport.GotoTop()
 
 	// Render story content from StoryClassification

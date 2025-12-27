@@ -12,7 +12,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwojciec/diffview/bubbletea"
+	"github.com/fwojciec/diffview/chroma"
 	"github.com/fwojciec/diffview/jsonl"
+	"github.com/fwojciec/diffview/lipgloss"
+	"github.com/fwojciec/diffview/worddiff"
 )
 
 // ErrNoCases is returned when the input file contains no cases.
@@ -62,9 +65,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Set up syntax highlighting
+	theme := lipgloss.DefaultTheme()
+	detector := chroma.NewDetector()
+	tokenizer, err := chroma.NewTokenizer(chroma.StyleFromPalette(theme.Palette()))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error setting up syntax highlighting:", err)
+		os.Exit(1)
+	}
+
 	// Create model with options
 	opts := []bubbletea.EvalModelOption{
 		bubbletea.WithJudgmentStore(store, outputPath),
+		bubbletea.WithEvalStyles(theme.Styles()),
+		bubbletea.WithEvalLanguageDetector(detector),
+		bubbletea.WithEvalTokenizer(tokenizer),
+		bubbletea.WithEvalWordDiffer(worddiff.NewDiffer()),
 	}
 	if len(existingJudgments) > 0 {
 		opts = append(opts, bubbletea.WithExistingJudgments(existingJudgments))
