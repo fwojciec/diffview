@@ -12,6 +12,7 @@ type EvalCase struct {
 type Judgment struct {
 	Commit   string    `json:"commit"`    // Links to EvalCase.Input.Commit.Hash
 	Index    int       `json:"index"`     // Position in input file (0-based)
+	Judged   bool      `json:"judged"`    // Whether pass/fail has been explicitly set
 	Pass     bool      `json:"pass"`      // Whether the classification is acceptable
 	Critique string    `json:"critique"`  // Explanation for failure (empty if pass)
 	JudgedAt time.Time `json:"judged_at"` // When judgment was recorded

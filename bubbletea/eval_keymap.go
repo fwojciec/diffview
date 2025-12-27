@@ -5,8 +5,10 @@ import "github.com/charmbracelet/bubbles/key"
 // EvalKeyMap defines the key bindings for the eval reviewer.
 type EvalKeyMap struct {
 	// Navigation
-	NextCase key.Binding
-	PrevCase key.Binding
+	NextCase     key.Binding
+	PrevCase     key.Binding
+	NextUnjudged key.Binding
+	PrevUnjudged key.Binding
 
 	// Panel switching
 	DiffPanel  key.Binding
@@ -44,6 +46,14 @@ func DefaultEvalKeyMap() EvalKeyMap {
 		PrevCase: key.NewBinding(
 			key.WithKeys("k"),
 			key.WithHelp("k", "previous case"),
+		),
+		NextUnjudged: key.NewBinding(
+			key.WithKeys("u"),
+			key.WithHelp("u", "next unjudged"),
+		),
+		PrevUnjudged: key.NewBinding(
+			key.WithKeys("U"),
+			key.WithHelp("U", "previous unjudged"),
 		),
 		DiffPanel: key.NewBinding(
 			key.WithKeys("d"),
