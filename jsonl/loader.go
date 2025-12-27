@@ -22,9 +22,9 @@ func NewLoader() *Loader {
 	return &Loader{}
 }
 
-// maxLineSize is the maximum size for a single JSONL line (1MB).
-// This accommodates large diffs while preventing memory issues.
-const maxLineSize = 1024 * 1024
+// maxLineSize is the maximum size for a single JSONL line (4MB).
+// This accommodates large PR-level diffs while preventing memory issues.
+const maxLineSize = 4 * 1024 * 1024
 
 // Load reads a JSONL file and returns all EvalCase records.
 func (l *Loader) Load(path string) ([]diffview.EvalCase, error) {

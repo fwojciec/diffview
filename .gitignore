@@ -40,6 +40,7 @@ Thumbs.db
 
 # Build artifacts
 /diffview
+/diffstory
 /dist/
 /build/
 cmd/diffview/diffview
@@ -75,3 +76,6 @@ test-results.json
 
 # Beads local database (cache, not the JSONL source of truth)
 .beads/beads.db
+
+# Eval intermediate files (keep only final classified dataset)
+eval/cases/*-prs.jsonl
