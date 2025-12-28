@@ -119,6 +119,19 @@ type GenerateContentConfig struct {
 	SystemInstruction *Content
 	Temperature       *float32
 	ResponseMIMEType  string
+	ResponseSchema    *Schema
+	ThinkingLevel     string // "", "MINIMAL", "LOW", "MEDIUM", "HIGH"
+}
+
+// Schema represents the structure for controlled JSON generation.
+type Schema struct {
+	Type             string             // object, array, string, integer, number, boolean
+	Properties       map[string]*Schema // For object types
+	Items            *Schema            // For array types
+	Enum             []string           // For string enums
+	Required         []string           // Required property names
+	PropertyOrdering []string           // Order of properties in output
+	Description      string             // Field description
 }
 
 // GenerateContentResponse holds the response from content generation.
@@ -133,4 +146,19 @@ type MockGenerativeClient struct {
 
 func (m *MockGenerativeClient) GenerateContent(ctx context.Context, model string, contents []*Content, config *GenerateContentConfig) (*GenerateContentResponse, error) {
 	return m.GenerateContentFn(ctx, model, contents, config)
+}
+
+// APIError represents an error from the Gemini API with HTTP status code.
+type APIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	return e.Message
+}
+
+// NewAPIError creates a new APIError with the given status code and message.
+func NewAPIError(statusCode int, message string) *APIError {
+	return &APIError{StatusCode: statusCode, Message: message}
 }

@@ -1,21 +1,63 @@
 # Optimizing Gemini Flash for Go CLI code diff classification
 
-**Your best choice for production is Gemini 2.5 Flash-Lite** (`gemini-2.5-flash-lite`) — Google explicitly designed it for "high-volume, latency-sensitive tasks like classification" with the lowest pricing tier ($0.10/1M input tokens). All Flash models support **1M token context windows**, making your 50K-token diffs well within limits. However, your 650-token static prompt is below the minimum threshold for explicit context caching, so you'll rely on implicit caching or need to restructure your approach.
+> **Implementation Decision**: We chose **Gemini 3 Flash Preview** over Gemini 2.5 Flash-Lite despite the cost difference. Code diff classification is fundamentally a **code understanding task**, not simple text classification. Gemini 3's 78% SWE-bench score represents significantly better code comprehension. Following the principle of "building for future models, not current SOA" (learned from Claude Code developers), we optimize for capability over cost.
 
-## Model selection: stability beats capability for classification
+## Model selection: capability beats cost for code understanding
 
-For code diff classification in production, **Gemini 2.5 Flash-Lite** is the optimal choice despite newer options being available. Three factors drive this recommendation:
+For code diff classification, **Gemini 3 Flash Preview** (`gemini-3-flash-preview`) is the optimal choice because this task requires understanding code structure, refactoring patterns, and semantic changes—not just text classification.
 
-| Model | Input Cost | Output Cost | Status | Best For |
-|-------|-----------|-------------|--------|----------|
-| **Gemini 2.5 Flash-Lite** | $0.10/1M | $0.40/1M | Stable GA | Classification, high volume |
-| Gemini 2.5 Flash | $0.30/1M | $2.50/1M | Stable GA | Complex reasoning tasks |
-| Gemini 3 Flash Preview | $0.50/1M | $3.00/1M | Preview | Frontier coding capabilities |
-| Gemini 2.0 Flash | $0.10/1M | $0.40/1M | Stable | General purpose |
+| Model | Input Cost | Output Cost | SWE-bench | Best For |
+|-------|-----------|-------------|-----------|----------|
+| Gemini 2.5 Flash-Lite | $0.10/1M | $0.40/1M | — | Simple classification, high volume |
+| Gemini 2.5 Flash | $0.30/1M | $2.50/1M | — | Complex reasoning |
+| **Gemini 3 Flash Preview** | $0.50/1M | $3.00/1M | 78% | Code understanding, reasoning |
 
-**Why 2.5 Flash-Lite wins:** It's 1.5x faster than Gemini 2.0 Flash, maintains stable GA status with predictable behavior, supports full JSON Schema structured outputs, and costs **3-7x less than higher-tier models**. The preview Gemini 3 Flash scores 78% on SWE-bench for code understanding, but preview models carry a 2-week deprecation warning risk and potential behavior changes.
+**Why Gemini 3 Flash wins for this use case:**
+- 78% on SWE-bench indicates strong code comprehension
+- Better at understanding refactoring patterns vs. feature additions
+- More accurate at categorizing hunks as "core" vs "systematic" vs "noise"
+- Preview status is acceptable—we build for where models are going
 
-For your classification task, the difference in code understanding capability between models matters less than structured output reliability. All 2.5+ models preserve property ordering and support full JSON Schema — critical for consistent classification results.
+## Gemini 3 specific configuration
+
+### Temperature: Use default (1.0)
+
+**Critical**: Google strongly recommends keeping temperature at the default value of **1.0** for Gemini 3 models. Lower temperatures (like 0.3 used for 2.x models) can cause:
+- Looping behavior
+- Degraded performance on complex reasoning tasks
+
+```go
+// WRONG for Gemini 3
+config := &genai.GenerateContentConfig{
+    Temperature: genai.Ptr(float32(0.3)), // Causes issues!
+}
+
+// CORRECT for Gemini 3 - omit temperature entirely
+config := &genai.GenerateContentConfig{
+    // Temperature uses default 1.0
+}
+```
+
+### Thinking Level
+
+Gemini 3 introduces `ThinkingLevel` to control reasoning depth:
+
+| Level | Use Case | Latency |
+|-------|----------|---------|
+| `MINIMAL` | Simple instruction following | Lowest |
+| `LOW` | Simple tasks, high-throughput | Low |
+| `MEDIUM` | Balanced reasoning (recommended for classification) | Medium |
+| `HIGH` | Maximum reasoning depth | Highest |
+
+For code diff classification, **MEDIUM** provides the right balance—enough reasoning to understand code patterns without excessive latency.
+
+```go
+config := &genai.GenerateContentConfig{
+    ThinkingConfig: &genai.ThinkingConfig{
+        ThinkingLevel: genai.ThinkingLevelMedium,
+    },
+}
+```
 
 ## Structured output: use responseSchema, not prompt-embedded JSON
 
@@ -26,7 +68,7 @@ Gemini's controlled decoding **guarantees syntactically valid JSON** when you us
 ```go
 // For classification with multiple output fields
 config := &genai.GenerateContentConfig{
-    Temperature:      genai.Ptr(float32(0.3)), // Good for 2.x classification
+    // Note: Omit Temperature for Gemini 3 (uses default 1.0)
     ResponseMIMEType: "application/json",
     ResponseSchema: &genai.Schema{
         Type: "object",
@@ -52,7 +94,7 @@ config := &genai.GenerateContentConfig{
 }
 ```
 
-**Temperature considerations:** Your current **0.3 is appropriate for Gemini 2.x** classification tasks. However, if you upgrade to Gemini 3.x, Google strongly recommends keeping temperature at **1.0** — lower values can cause unexpected looping behavior and degraded performance with the newer reasoning architecture.
+**Temperature considerations:** Since we're using Gemini 3 Flash, temperature should be omitted entirely (uses default 1.0). See the "Gemini 3 specific configuration" section above for details on why lower temperatures cause issues with Gemini 3's reasoning architecture.
 
 ## Caching strategy: implicit only for your token counts
 
@@ -302,14 +344,16 @@ For very high-volume scenarios, the **Batch API** accepts JSONL files up to 2GB 
 
 ## Key implementation recommendations
 
-Based on this research, here are your optimal implementation choices:
+Based on this research and the decision to prioritize code understanding capability:
 
-**Model:** Start with `gemini-2.5-flash-lite` for production stability and lowest cost. Evaluate `gemini-2.5-flash` if classification accuracy needs improvement, or `gemini-3-flash-preview` if you need cutting-edge code understanding and can tolerate preview instability.
+**Model:** Use `gemini-3-flash-preview` for code diff classification. The 78% SWE-bench score indicates significantly better code understanding than 2.x models. For simple text classification tasks (not code), consider `gemini-2.5-flash-lite` for cost savings.
 
-**Structured output:** Use `ResponseSchema` with `ResponseMIMEType: "application/json"` — never embed schema in prompts. For simple single-label classification, consider `text/x.enum` for guaranteed enum outputs.
+**Temperature:** Omit entirely for Gemini 3 (uses default 1.0). Lower temperatures cause looping and degraded performance.
 
-**Caching:** Your 650-token static content won't benefit from explicit context caching. Rely on implicit caching (automatic on 2.5 models) by keeping static content at prompt start. Your existing SHA256 file-based caching remains valuable for eliminating redundant API calls.
+**Thinking Level:** Use `MEDIUM` for balanced reasoning. Higher levels increase latency; lower levels may miss nuanced code patterns.
 
-**Error handling:** Implement exponential backoff with jitter for 429/500/503 errors. Maximum 5 retries with 1-60 second delay range. JSON parsing failures with structured output should be rare — focus validation on semantic correctness.
+**Structured output:** Use `ResponseSchema` with `ResponseMIMEType: "application/json"` — never embed schema in prompts.
 
-**Temperature:** Keep 0.3 for Gemini 2.x. If upgrading to Gemini 3.x, test with the default 1.0 first.
+**Caching:** Your 650-token static content won't benefit from explicit context caching. Rely on implicit caching by keeping static content at prompt start. Your existing SHA256 file-based caching remains valuable for eliminating redundant API calls.
+
+**Error handling:** Implement exponential backoff with jitter for 429/500/503 errors. Maximum 5 retries with 1-60 second delay range.

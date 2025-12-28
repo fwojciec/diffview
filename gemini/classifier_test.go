@@ -175,13 +175,23 @@ func TestBuildClassificationPrompt_IncludesInstructions(t *testing.T) {
 	assert.Contains(t, prompt, "hunk_index")
 }
 
-func TestBuildClassificationConfig_SetsLowerTemperature(t *testing.T) {
+func TestBuildClassificationConfig_UsesDefaultTemperature(t *testing.T) {
 	t.Parallel()
 
 	config := gemini.BuildClassificationConfig()
 
-	require.NotNil(t, config.Temperature)
-	assert.InDelta(t, 0.3, *config.Temperature, 0.001)
+	// Temperature should be nil to use Gemini 3's default (1.0)
+	// Lower temperatures can cause looping/degraded performance
+	assert.Nil(t, config.Temperature)
+}
+
+func TestBuildClassificationConfig_SetsThinkingLevel(t *testing.T) {
+	t.Parallel()
+
+	config := gemini.BuildClassificationConfig()
+
+	// MEDIUM provides balanced reasoning for code classification
+	assert.Equal(t, "MEDIUM", config.ThinkingLevel)
 }
 
 func TestBuildClassificationConfig_SetsSystemInstruction(t *testing.T) {
@@ -256,4 +266,102 @@ func TestClassifier_Classify_RespectsCallerContextDeadline(t *testing.T) {
 	// Assert: should timeout from caller's context, not classifier's
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestClassifier_Classify_RetriesOnTransientErrors(t *testing.T) {
+	t.Parallel()
+
+	expectedClassification := diffview.StoryClassification{
+		ChangeType: "feature",
+		Narrative:  "core-periphery",
+		Summary:    "Add new feature",
+		Sections:   []diffview.Section{{Role: "core", Title: "Main", Hunks: nil, Explanation: "test"}},
+	}
+	responseJSON, err := json.Marshal(expectedClassification)
+	require.NoError(t, err)
+
+	callCount := 0
+	mockClient := &gemini.MockGenerativeClient{
+		GenerateContentFn: func(ctx context.Context, model string, contents []*gemini.Content, config *gemini.GenerateContentConfig) (*gemini.GenerateContentResponse, error) {
+			callCount++
+			if callCount <= 2 {
+				// Fail with retryable error first two times
+				return nil, gemini.NewAPIError(503, "service unavailable")
+			}
+			return &gemini.GenerateContentResponse{Text: string(responseJSON)}, nil
+		},
+	}
+
+	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel,
+		gemini.WithRetry(3, 1*time.Millisecond, 10*time.Millisecond))
+	input := diffview.ClassificationInput{
+		Commits: []diffview.CommitBrief{{Message: "test"}},
+	}
+
+	result, err := classifier.Classify(context.Background(), input)
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, callCount, "should have retried twice after initial failure")
+	assert.Equal(t, "feature", result.ChangeType)
+}
+
+func TestClassifier_Classify_DoesNotRetryNonRetryableErrors(t *testing.T) {
+	t.Parallel()
+
+	callCount := 0
+	mockClient := &gemini.MockGenerativeClient{
+		GenerateContentFn: func(ctx context.Context, model string, contents []*gemini.Content, config *gemini.GenerateContentConfig) (*gemini.GenerateContentResponse, error) {
+			callCount++
+			return nil, gemini.NewAPIError(400, "bad request")
+		},
+	}
+
+	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel,
+		gemini.WithRetry(3, 1*time.Millisecond, 10*time.Millisecond))
+	input := diffview.ClassificationInput{
+		Commits: []diffview.CommitBrief{{Message: "test"}},
+	}
+
+	_, err := classifier.Classify(context.Background(), input)
+
+	require.Error(t, err)
+	assert.Equal(t, 1, callCount, "should not retry non-retryable errors")
+}
+
+func TestClassifier_Classify_FailsAfterMaxRetries(t *testing.T) {
+	t.Parallel()
+
+	callCount := 0
+	mockClient := &gemini.MockGenerativeClient{
+		GenerateContentFn: func(ctx context.Context, model string, contents []*gemini.Content, config *gemini.GenerateContentConfig) (*gemini.GenerateContentResponse, error) {
+			callCount++
+			return nil, gemini.NewAPIError(429, "rate limited")
+		},
+	}
+
+	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel,
+		gemini.WithRetry(3, 1*time.Millisecond, 10*time.Millisecond))
+	input := diffview.ClassificationInput{
+		Commits: []diffview.CommitBrief{{Message: "test"}},
+	}
+
+	_, err := classifier.Classify(context.Background(), input)
+
+	require.Error(t, err)
+	assert.Equal(t, 3, callCount, "should try maxRetries times")
+	assert.Contains(t, err.Error(), "max retries exceeded")
+}
+
+func TestBuildClassificationConfig_SetsResponseSchema(t *testing.T) {
+	t.Parallel()
+
+	config := gemini.BuildClassificationConfig()
+
+	require.NotNil(t, config.ResponseSchema)
+	assert.Equal(t, "object", config.ResponseSchema.Type)
+	require.NotNil(t, config.ResponseSchema.Properties)
+	assert.Contains(t, config.ResponseSchema.Properties, "change_type")
+	assert.Contains(t, config.ResponseSchema.Properties, "narrative")
+	assert.Contains(t, config.ResponseSchema.Properties, "summary")
+	assert.Contains(t, config.ResponseSchema.Properties, "sections")
 }
