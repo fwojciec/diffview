@@ -12,6 +12,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/bubbletea"
 	"github.com/fwojciec/diffview/fs"
@@ -107,8 +108,8 @@ func (s *spinner) Start() {
 		for {
 			select {
 			case <-s.stop:
-				// Clear the spinner line (frame width + space + message)
-				clearLen := len(s.frames[0]) + 1 + len(s.message)
+				// Clear the spinner line using display width for Unicode correctness
+				clearLen := lipgloss.Width(s.frames[0]) + 1 + lipgloss.Width(s.message)
 				fmt.Fprintf(s.w, "\r%s\r", strings.Repeat(" ", clearLen))
 				return
 			case <-ticker.C:
