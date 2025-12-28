@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/bubbletea"
+	"github.com/fwojciec/diffview/fs"
 	"github.com/fwojciec/diffview/gemini"
 	"github.com/fwojciec/diffview/gitdiff"
 )
@@ -91,7 +92,8 @@ func run() error {
 	}
 	defer client.Close()
 
-	classifier := gemini.NewClassifier(client, gemini.DefaultModel)
+	geminiClassifier := gemini.NewClassifier(client, gemini.DefaultModel)
+	classifier := fs.NewClassifier(geminiClassifier, fs.DefaultCacheDir())
 
 	app := &App{
 		Classifier: classifier,
