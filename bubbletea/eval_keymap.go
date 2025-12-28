@@ -11,10 +11,11 @@ type EvalKeyMap struct {
 	PrevUnjudged key.Binding
 
 	// Panel switching
-	DiffPanel  key.Binding
-	StoryPanel key.Binding
+	TogglePanel key.Binding
 
 	// Scrolling
+	ScrollDown   key.Binding
+	ScrollUp     key.Binding
 	HalfPageUp   key.Binding
 	HalfPageDown key.Binding
 	GotoTop      key.Binding
@@ -37,18 +38,19 @@ type EvalKeyMap struct {
 
 	// General
 	Quit key.Binding
+	Help key.Binding
 }
 
 // DefaultEvalKeyMap returns the default key bindings for the eval reviewer.
 func DefaultEvalKeyMap() EvalKeyMap {
 	return EvalKeyMap{
 		NextCase: key.NewBinding(
-			key.WithKeys("j"),
-			key.WithHelp("j", "next case"),
+			key.WithKeys("]"),
+			key.WithHelp("]", "next case"),
 		),
 		PrevCase: key.NewBinding(
-			key.WithKeys("k"),
-			key.WithHelp("k", "previous case"),
+			key.WithKeys("["),
+			key.WithHelp("[", "previous case"),
 		),
 		NextUnjudged: key.NewBinding(
 			key.WithKeys("u"),
@@ -58,13 +60,17 @@ func DefaultEvalKeyMap() EvalKeyMap {
 			key.WithKeys("U"),
 			key.WithHelp("U", "previous unjudged"),
 		),
-		DiffPanel: key.NewBinding(
-			key.WithKeys("d"),
-			key.WithHelp("d", "focus diff panel"),
+		TogglePanel: key.NewBinding(
+			key.WithKeys("tab"),
+			key.WithHelp("Tab", "toggle panel"),
 		),
-		StoryPanel: key.NewBinding(
-			key.WithKeys("s"),
-			key.WithHelp("s", "focus story panel"),
+		ScrollDown: key.NewBinding(
+			key.WithKeys("j", "down"),
+			key.WithHelp("j", "scroll down"),
+		),
+		ScrollUp: key.NewBinding(
+			key.WithKeys("k", "up"),
+			key.WithHelp("k", "scroll up"),
 		),
 		HalfPageUp: key.NewBinding(
 			key.WithKeys("ctrl+u"),
@@ -76,7 +82,7 @@ func DefaultEvalKeyMap() EvalKeyMap {
 		),
 		GotoTop: key.NewBinding(
 			key.WithKeys("g"),
-			key.WithHelp("gg", "go to top"),
+			key.WithHelp("g", "go to top"),
 		),
 		GotoBottom: key.NewBinding(
 			key.WithKeys("G"),
@@ -113,6 +119,10 @@ func DefaultEvalKeyMap() EvalKeyMap {
 		Quit: key.NewBinding(
 			key.WithKeys("q", "ctrl+c"),
 			key.WithHelp("q", "quit"),
+		),
+		Help: key.NewBinding(
+			key.WithKeys("?"),
+			key.WithHelp("?", "help"),
 		),
 	}
 }

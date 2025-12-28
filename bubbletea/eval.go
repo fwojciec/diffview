@@ -30,6 +30,7 @@ type Mode int
 const (
 	ModeReview Mode = iota
 	ModeCritique
+	ModeHelp
 )
 
 // EvalModel is the Bubble Tea model for evaluating diff stories.
@@ -150,10 +151,14 @@ func (m EvalModel) Init() tea.Cmd {
 func (m EvalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if m.mode == ModeReview {
+		switch m.mode {
+		case ModeReview:
 			return m.handleReviewKeys(msg)
+		case ModeCritique:
+			return m.handleCritiqueKeys(msg)
+		case ModeHelp:
+			return m.handleHelpKeys(msg)
 		}
-		return m.handleCritiqueKeys(msg)
 
 	case tea.WindowSizeMsg:
 		return m.handleWindowSize(msg)
@@ -202,12 +207,28 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case key.Matches(msg, m.keymap.DiffPanel):
-		m.activePanel = PanelDiff
+	case key.Matches(msg, m.keymap.TogglePanel):
+		if m.activePanel == PanelDiff {
+			m.activePanel = PanelStory
+		} else {
+			m.activePanel = PanelDiff
+		}
 		return m, nil
 
-	case key.Matches(msg, m.keymap.StoryPanel):
-		m.activePanel = PanelStory
+	case key.Matches(msg, m.keymap.ScrollDown):
+		if m.activePanel == PanelDiff {
+			m.diffViewport.ScrollDown(1)
+		} else {
+			m.storyViewport.ScrollDown(1)
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keymap.ScrollUp):
+		if m.activePanel == PanelDiff {
+			m.diffViewport.ScrollUp(1)
+		} else {
+			m.storyViewport.ScrollUp(1)
+		}
 		return m, nil
 
 	case key.Matches(msg, m.keymap.HalfPageUp):
@@ -226,6 +247,22 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case key.Matches(msg, m.keymap.GotoTop):
+		if m.activePanel == PanelDiff {
+			m.diffViewport.GotoTop()
+		} else {
+			m.storyViewport.GotoTop()
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keymap.GotoBottom):
+		if m.activePanel == PanelDiff {
+			m.diffViewport.GotoBottom()
+		} else {
+			m.storyViewport.GotoBottom()
+		}
+		return m, nil
+
 	case key.Matches(msg, m.keymap.Pass):
 		m.recordJudgment(true)
 		return m, nil
@@ -239,6 +276,10 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keymap.CopyCase):
 		m.copyCurrentCase()
+		return m, nil
+
+	case key.Matches(msg, m.keymap.Help):
+		m.mode = ModeHelp
 		return m, nil
 	}
 
@@ -255,6 +296,12 @@ func (m EvalModel) handleCritiqueKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.critiqueTextarea, cmd = m.critiqueTextarea.Update(msg)
 	return m, cmd
+}
+
+func (m EvalModel) handleHelpKeys(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Any key dismisses help
+	m.mode = ModeReview
+	return m, nil
 }
 
 func (m EvalModel) enterCritiqueMode() (tea.Model, tea.Cmd) {
@@ -604,6 +651,11 @@ func (m EvalModel) View() string {
 		return m.renderCritiqueView()
 	}
 
+	// Help mode shows keybinding overlay
+	if m.mode == ModeHelp {
+		return m.renderHelpView()
+	}
+
 	var s strings.Builder
 
 	// Diff panel header
@@ -639,6 +691,53 @@ func (m EvalModel) renderCritiqueView() string {
 	s.WriteString(m.critiqueTextarea.View())
 	s.WriteString("\n\n")
 	s.WriteString(lipgloss.NewStyle().Faint(true).Render("[Esc] save and exit"))
+
+	return s.String()
+}
+
+func (m EvalModel) renderHelpView() string {
+	var s strings.Builder
+
+	headerStyle := lipgloss.NewStyle().Bold(true)
+	keyStyle := lipgloss.NewStyle().Bold(true)
+	descStyle := lipgloss.NewStyle().Faint(true)
+
+	s.WriteString(headerStyle.Render("HELP"))
+	s.WriteString("\n\n")
+
+	// Navigation
+	s.WriteString(headerStyle.Render("Navigation"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("]/["), descStyle.Render("next/previous case")))
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("u/U"), descStyle.Render("next/previous unjudged")))
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("Tab"), descStyle.Render("toggle panel")))
+	s.WriteString("\n")
+
+	// Scrolling
+	s.WriteString(headerStyle.Render("Scrolling"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("j/k"), descStyle.Render("scroll down/up")))
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("ctrl+d/u"), descStyle.Render("half page down/up")))
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("g/G"), descStyle.Render("go to top/bottom")))
+	s.WriteString("\n")
+
+	// Judgment
+	s.WriteString(headerStyle.Render("Judgment"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("p"), descStyle.Render("mark pass")))
+	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("f"), descStyle.Render("mark fail")))
+	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("c"), descStyle.Render("enter critique")))
+	s.WriteString("\n")
+
+	// Other
+	s.WriteString(headerStyle.Render("Other"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("y"), descStyle.Render("copy case to clipboard")))
+	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("?"), descStyle.Render("toggle help")))
+	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("q"), descStyle.Render("quit")))
+	s.WriteString("\n\n")
+
+	s.WriteString(descStyle.Render("Press any key to close"))
 
 	return s.String()
 }
@@ -710,7 +809,7 @@ func (m EvalModel) renderStatusBar() string {
 	caseInfo := fmt.Sprintf("case %d/%d", m.currentIndex+1, len(m.cases))
 	progress := fmt.Sprintf("%d/%d reviewed", judged, len(m.cases))
 	indicatorBar := strings.Join(indicators, " ")
-	help := "[d]iff [s]tory [p]ass [f]ail [c]ritique [y]ank [j/k]nav [u/U]unjudged [q]uit"
+	help := "[p]ass [f]ail [c]ritique [y]ank ]/[nav [?]help [q]uit"
 
 	return fmt.Sprintf("%s │ %s │ %s │ %s", caseInfo, progress, indicatorBar, help)
 }
