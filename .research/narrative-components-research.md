@@ -241,6 +241,39 @@ Based on research, orderings should follow these principles:
    - In "before-after": cleanup first (shows what's being removed)
    - In others: cleanup last (shows what was cleaned up after)
 
+### Narrative Selection Decision Tree
+
+```
+START: What is the primary nature of this change?
+│
+├─► Is it fixing a bug or issue?
+│   └─► YES: Use cause-effect
+│       (problem → fix → test → supporting → cleanup)
+│
+├─► Is it replacing an old pattern with a new one?
+│   └─► YES: Use before-after
+│       (cleanup → core → supporting → test)
+│
+├─► Is it adding a new API/interface with implementation?
+│   └─► YES: Use entry-implementation
+│       (interface → implementation → test → supporting → cleanup)
+│
+├─► Is it applying the same pattern in multiple places?
+│   └─► YES: Use rule-instances
+│       (pattern → instances → test → cleanup)
+│
+└─► Otherwise (feature, enhancement, general change):
+    └─► Use core-periphery
+        (core → supporting → cleanup)
+```
+
+**Heuristics for Edge Cases:**
+
+1. **Mixed changes**: If a PR has both bug fix and feature work, choose the narrative that best describes the *primary* change
+2. **Refactors without replacement**: Pure refactors that don't replace a pattern → use core-periphery
+3. **Tests-only changes**: Use core-periphery with tests as the "core"
+4. **Chore/config changes**: Use core-periphery (simple, catches all)
+
 ### Recommended Orderings
 
 | Narrative | Current | Recommended | Rationale |
