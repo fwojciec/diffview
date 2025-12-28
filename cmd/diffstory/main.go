@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwojciec/diffview"
@@ -68,6 +70,70 @@ func (a *App) Run(ctx context.Context) (*diffview.Diff, *diffview.StoryClassific
 // ErrNoInput is returned when no diff input is provided.
 var ErrNoInput = errors.New("no input: pipe a diff or provide a file path")
 
+// spinner displays a progress indicator on stderr while a long-running operation executes.
+type spinner struct {
+	frames   []string
+	interval time.Duration
+	message  string
+	w        io.Writer
+	stop     chan struct{}
+	done     chan struct{}
+}
+
+// newSpinner creates a spinner that writes to the given writer.
+func newSpinner(w io.Writer, message string) *spinner {
+	return &spinner{
+		frames:   []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
+		interval: 80 * time.Millisecond,
+		message:  message,
+		w:        w,
+		stop:     make(chan struct{}),
+		done:     make(chan struct{}),
+	}
+}
+
+// Start begins the spinner animation in a goroutine.
+func (s *spinner) Start() {
+	go func() {
+		defer close(s.done)
+		ticker := time.NewTicker(s.interval)
+		defer ticker.Stop()
+
+		frame := 0
+		// Print initial frame immediately
+		fmt.Fprintf(s.w, "\r%s %s", s.frames[frame], s.message)
+		frame = (frame + 1) % len(s.frames)
+
+		for {
+			select {
+			case <-s.stop:
+				// Clear the spinner line (frame width + space + message)
+				clearLen := len(s.frames[0]) + 1 + len(s.message)
+				fmt.Fprintf(s.w, "\r%s\r", strings.Repeat(" ", clearLen))
+				return
+			case <-ticker.C:
+				fmt.Fprintf(s.w, "\r%s %s", s.frames[frame], s.message)
+				frame = (frame + 1) % len(s.frames)
+			}
+		}
+	}()
+}
+
+// Stop halts the spinner and clears its output.
+func (s *spinner) Stop() {
+	close(s.stop)
+	<-s.done
+}
+
+// isTerminal returns true if the given file is a terminal.
+func isTerminal(f *os.File) bool {
+	stat, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (stat.Mode() & os.ModeCharDevice) != 0
+}
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -114,7 +180,20 @@ func run() error {
 		app.Input = os.Stdin
 	}
 
+	// Show spinner while processing (only if stderr is a terminal)
+	var spin *spinner
+	if isTerminal(os.Stderr) {
+		spin = newSpinner(os.Stderr, "Classifying diff...")
+		spin.Start()
+	}
+
 	diff, classification, err := app.Run(ctx)
+
+	// Stop spinner before TUI or error output
+	if spin != nil {
+		spin.Stop()
+	}
+
 	if err != nil {
 		return err
 	}
