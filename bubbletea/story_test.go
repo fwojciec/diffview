@@ -350,3 +350,147 @@ func TestStoryModel_CategoryStyling(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestStoryModel_SectionIndicator_NoSections(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "b/file.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "content"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Story with empty sections - should not show section indicator
+	story := &diffview.StoryClassification{
+		Sections: []diffview.Section{},
+	}
+
+	m := bubbletea.NewStoryModel(diff, story)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for render - should show file/hunk but NOT "section X/Y:"
+	// (Note: status bar still shows "s/S:section" in help, so we check for the pattern)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasFile := bytes.Contains(out, []byte("file 1/1"))
+		hasHunk := bytes.Contains(out, []byte("hunk 1/1"))
+		noSectionIndicator := !bytes.Contains(out, []byte("section 1/"))
+		return hasFile && hasHunk && noSectionIndicator
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestStoryModel_SectionIndicator(t *testing.T) {
+	t.Parallel()
+
+	// Create many lines per file so sections don't all fit on screen
+	firstFileLines := make([]diffview.Line, 20)
+	for i := range firstFileLines {
+		firstFileLines[i] = diffview.Line{Type: diffview.LineContext, Content: "first file content line"}
+	}
+
+	secondFileLines := make([]diffview.Line, 20)
+	for i := range secondFileLines {
+		secondFileLines[i] = diffview.Line{Type: diffview.LineContext, Content: "second file content line"}
+	}
+
+	thirdFileLines := make([]diffview.Line, 20)
+	for i := range thirdFileLines {
+		thirdFileLines[i] = diffview.Line{Type: diffview.LineContext, Content: "third file content line"}
+	}
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "b/first.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{OldStart: 1, OldCount: 20, NewStart: 1, NewCount: 20, Lines: firstFileLines},
+				},
+			},
+			{
+				NewPath:   "b/second.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{OldStart: 1, OldCount: 20, NewStart: 1, NewCount: 20, Lines: secondFileLines},
+				},
+			},
+			{
+				NewPath:   "b/third.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{OldStart: 1, OldCount: 20, NewStart: 1, NewCount: 20, Lines: thirdFileLines},
+				},
+			},
+		},
+	}
+
+	story := &diffview.StoryClassification{
+		Sections: []diffview.Section{
+			{
+				Role:  "first",
+				Title: "Core Changes",
+				Hunks: []diffview.HunkRef{
+					{File: "first.go", HunkIndex: 0, Category: "core"},
+				},
+			},
+			{
+				Role:  "second",
+				Title: "Supporting Work",
+				Hunks: []diffview.HunkRef{
+					{File: "second.go", HunkIndex: 0, Category: "core"},
+				},
+			},
+			{
+				Role:  "third",
+				Title: "Tests",
+				Hunks: []diffview.HunkRef{
+					{File: "third.go", HunkIndex: 0, Category: "core"},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewStoryModel(diff, story)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for initial render - should show "section 1/3: Core Changes"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 1/3: Core Changes"))
+	})
+
+	// Navigate to second section
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	// Should show "section 2/3: Supporting Work"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 2/3: Supporting Work"))
+	})
+
+	// Navigate to third section
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	// Should show "section 3/3: Tests"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 3/3: Tests"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}

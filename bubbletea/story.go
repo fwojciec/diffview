@@ -19,6 +19,7 @@ type StoryModel struct {
 	// Pre-computed mappings (built on construction)
 	hunkToSection    map[hunkKey]int    // hunk → section index
 	sectionPositions []int              // line numbers where sections start
+	sectionIndices   []int              // maps position index to story section index
 	hunkCategories   map[hunkKey]string // hunk → category for styling
 	collapseText     map[hunkKey]string // hunk → collapse text
 	collapsedHunks   map[hunkKey]bool   // tracks runtime collapse state
@@ -174,13 +175,13 @@ func (m StoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, msg.Height-statusBarHeight)
 			m.viewport.SetContent(m.renderContent())
-			m.sectionPositions = m.computeSectionPositions()
+			m.sectionPositions, m.sectionIndices = m.computeSectionPositions()
 			m.ready = true
 		} else if widthChanged {
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - statusBarHeight
 			m.viewport.SetContent(m.renderContent())
-			m.sectionPositions = m.computeSectionPositions()
+			m.sectionPositions, m.sectionIndices = m.computeSectionPositions()
 		} else {
 			m.viewport.Height = msg.Height - statusBarHeight
 		}
@@ -214,12 +215,13 @@ func (m StoryModel) renderContent() string {
 
 // computeSectionPositions calculates the line positions where each section starts.
 // A section starts at the first hunk that belongs to it.
-func (m StoryModel) computeSectionPositions() []int {
+// Returns both positions and the mapping from position index to story section index.
+func (m StoryModel) computeSectionPositions() (positions []int, indices []int) {
 	if m.story == nil || len(m.story.Sections) == 0 {
-		return nil
+		return nil, nil
 	}
 	if m.diff == nil {
-		return nil
+		return nil, nil
 	}
 
 	// Compute hunk positions first
@@ -247,15 +249,15 @@ func (m StoryModel) computeSectionPositions() []int {
 		}
 	}
 
-	// Filter to only include found sections
-	var result []int
+	// Filter to only include found sections, keeping track of original indices
 	for i := range m.story.Sections {
 		if sectionFound[i] {
-			result = append(result, sectionPositions[i])
+			positions = append(positions, sectionPositions[i])
+			indices = append(indices, i)
 		}
 	}
 
-	return result
+	return positions, indices
 }
 
 // computePositions calculates line positions accounting for collapse state.
@@ -357,7 +359,7 @@ func (m *StoryModel) toggleCurrentHunkCollapse() {
 
 	// Re-render content
 	m.viewport.SetContent(m.renderContent())
-	m.sectionPositions = m.computeSectionPositions()
+	m.sectionPositions, m.sectionIndices = m.computeSectionPositions()
 }
 
 // toggleAllCollapse toggles all hunks between fully collapsed and fully expanded.
@@ -383,7 +385,7 @@ func (m *StoryModel) toggleAllCollapse() {
 
 	// Re-render content
 	m.viewport.SetContent(m.renderContent())
-	m.sectionPositions = m.computeSectionPositions()
+	m.sectionPositions, m.sectionIndices = m.computeSectionPositions()
 }
 
 // hunkKeyAtIndex returns the hunk key for the hunk at the given rendered index.
@@ -457,9 +459,11 @@ func (m StoryModel) statusBarView() string {
 	hunkPositions, filePositions := m.computePositions()
 	fileIdx, fileTotal := m.currentPosition(filePositions)
 	hunkIdx, hunkTotal := m.currentPosition(hunkPositions)
+	sectionIdx, sectionTotal, sectionTitle := m.currentSection()
 
 	fileWidth := digitWidth(fileTotal)
 	hunkWidth := digitWidth(hunkTotal)
+	sectionWidth := digitWidth(sectionTotal)
 
 	filePos := fmt.Sprintf("file %*d/%-*d", fileWidth, fileIdx, fileWidth, fileTotal)
 	hunkPos := fmt.Sprintf("hunk %*d/%-*d", hunkWidth, hunkIdx, hunkWidth, hunkTotal)
@@ -468,8 +472,15 @@ func (m StoryModel) statusBarView() string {
 	// Build status bar with separators
 	sep := sepStyle.Render(" │ ")
 	content := barStyle.Render(filePos) + sep +
-		barStyle.Render(hunkPos) + sep +
-		barStyle.Render(scrollPos) + sep +
+		barStyle.Render(hunkPos) + sep
+
+	// Add section indicator if sections exist
+	if sectionTotal > 0 {
+		sectionPos := fmt.Sprintf("section %*d/%-*d: %s", sectionWidth, sectionIdx, sectionWidth, sectionTotal, sectionTitle)
+		content += barStyle.Render(sectionPos) + sep
+	}
+
+	content += barStyle.Render(scrollPos) + sep +
 		dimStyle.Render("j/k:scroll  s/S:section  o:collapse  z:all  q:quit") +
 		barStyle.Render("  ")
 
@@ -514,4 +525,50 @@ func (m StoryModel) scrollPosition() string {
 	}
 	percent := int(m.viewport.ScrollPercent() * 100)
 	return fmt.Sprintf("%2d%%", percent)
+}
+
+// currentSection returns the current section index (1-based), total count, and title.
+// Returns (0, 0, "") if there are no sections.
+func (m StoryModel) currentSection() (current, total int, title string) {
+	if m.story == nil || len(m.story.Sections) == 0 || len(m.sectionPositions) == 0 {
+		return 0, 0, ""
+	}
+
+	total = len(m.sectionPositions)
+	currentLine := m.viewport.YOffset
+	current = 1
+
+	// Find which section we're currently in based on viewport position.
+	// The current section is the last one whose start position is at or before the viewport top.
+	positionIdx := 0
+	for i, pos := range m.sectionPositions {
+		if pos <= currentLine {
+			current = i + 1
+			positionIdx = i
+		} else {
+			break
+		}
+	}
+
+	// Special case: when at bottom, if a later section starts within the viewport,
+	// show that section instead. This handles the case where the viewport can't
+	// scroll far enough to have section N's position <= YOffset.
+	if m.viewport.AtBottom() && positionIdx < len(m.sectionPositions)-1 {
+		nextSectionPos := m.sectionPositions[positionIdx+1]
+		viewportBottom := currentLine + m.viewport.Height
+		if nextSectionPos < viewportBottom {
+			positionIdx++
+			current = positionIdx + 1
+		}
+	}
+
+	// Get the title from the story section using the stored index mapping
+	if positionIdx < len(m.sectionIndices) {
+		storySectionIdx := m.sectionIndices[positionIdx]
+		if storySectionIdx < len(m.story.Sections) {
+			title = m.story.Sections[storySectionIdx].Title
+		}
+	}
+
+	return current, total, title
 }
