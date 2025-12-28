@@ -1,0 +1,7 @@
+{
+  "last_failure": "2025-12-28T14:46:03.417147-08:00",
+  "failure_count": 1,
+  "backoff_until": "2025-12-28T14:46:33.417148-08:00",
+  "needs_manual_sync": false,
+  "failure_reason": "git pull failed: exit status 1\nfatal: couldn't find remote ref diffview-373\n"
+}
