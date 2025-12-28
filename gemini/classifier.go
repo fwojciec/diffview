@@ -181,8 +181,8 @@ Group hunks into sections with meaningful roles that tell the story of the chang
 - cause-effect: problem → fix → test → supporting → cleanup
 - core-periphery: core → supporting → cleanup
 - before-after: cleanup (old pattern) → core (new pattern) → test → supporting
-- rule-instances: rule → exception → core → supporting → cleanup
-- entry-implementation: integration → core → test → supporting → cleanup
+- rule-instances: pattern → core → supporting → cleanup
+- entry-implementation: interface → core → test → supporting → cleanup
 
 Rules:
 - Every hunk from the input must appear in exactly one section
@@ -242,7 +242,7 @@ func classificationSchema() *Schema {
 					Properties: map[string]*Schema{
 						"role": {
 							Type:        "string",
-							Enum:        []string{"problem", "fix", "test", "core", "supporting", "rule", "exception", "integration", "cleanup"},
+							Enum:        []string{"problem", "fix", "test", "core", "supporting", "pattern", "interface", "cleanup"},
 							Description: "The section's role in the narrative",
 						},
 						"title": {

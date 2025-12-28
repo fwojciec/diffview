@@ -68,25 +68,25 @@ func TestOrderSections(t *testing.T) {
 		assert.Equal(t, []string{"cleanup", "core", "test", "supporting"}, roles)
 	})
 
-	t.Run("rule-instances orders rule before exception before core", func(t *testing.T) {
+	t.Run("rule-instances orders pattern before core before supporting", func(t *testing.T) {
 		t.Parallel()
 
 		classification := &diffview.StoryClassification{
 			Narrative: "rule-instances",
 			Sections: []diffview.Section{
+				{Role: "supporting", Title: "Helpers"},
 				{Role: "core", Title: "Apply pattern"},
-				{Role: "exception", Title: "Special case"},
-				{Role: "rule", Title: "Define pattern"},
+				{Role: "pattern", Title: "Define pattern"},
 			},
 		}
 
 		classification.OrderSections()
 
 		roles := extractRoles(classification.Sections)
-		assert.Equal(t, []string{"rule", "exception", "core"}, roles)
+		assert.Equal(t, []string{"pattern", "core", "supporting"}, roles)
 	})
 
-	t.Run("entry-implementation orders integration before core before test before supporting", func(t *testing.T) {
+	t.Run("entry-implementation orders interface before core before test before supporting", func(t *testing.T) {
 		t.Parallel()
 
 		classification := &diffview.StoryClassification{
@@ -95,14 +95,14 @@ func TestOrderSections(t *testing.T) {
 				{Role: "supporting", Title: "Helpers"},
 				{Role: "test", Title: "Tests"},
 				{Role: "core", Title: "Implementation"},
-				{Role: "integration", Title: "API entry"},
+				{Role: "interface", Title: "API entry"},
 			},
 		}
 
 		classification.OrderSections()
 
 		roles := extractRoles(classification.Sections)
-		assert.Equal(t, []string{"integration", "core", "test", "supporting"}, roles)
+		assert.Equal(t, []string{"interface", "core", "test", "supporting"}, roles)
 	})
 
 	t.Run("unknown roles are placed after known roles", func(t *testing.T) {
@@ -113,7 +113,7 @@ func TestOrderSections(t *testing.T) {
 			Sections: []diffview.Section{
 				{Role: "cleanup", Title: "Not in cause-effect order"},
 				{Role: "problem", Title: "The problem"},
-				{Role: "integration", Title: "Also not in cause-effect order"},
+				{Role: "interface", Title: "Also not in cause-effect order"},
 				{Role: "fix", Title: "The fix"},
 			},
 		}
@@ -121,8 +121,8 @@ func TestOrderSections(t *testing.T) {
 		classification.OrderSections()
 
 		roles := extractRoles(classification.Sections)
-		// problem, fix come first (in order), then cleanup and integration (preserving relative order)
-		assert.Equal(t, []string{"problem", "fix", "cleanup", "integration"}, roles)
+		// problem, fix come first (in order), then cleanup and interface (preserving relative order)
+		assert.Equal(t, []string{"problem", "fix", "cleanup", "interface"}, roles)
 	})
 
 	t.Run("unknown narrative preserves original order", func(t *testing.T) {

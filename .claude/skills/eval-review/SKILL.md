@@ -118,8 +118,9 @@ Beads files (`.beads/`) require special handling based on what they affect:
 | fix | The solution |
 | test | Test additions/modifications |
 | core | Essential logic changes |
-| supporting | Enables but isn't focus |
-| integration | Wiring components |
+| supporting | Enables but isn't focus (including exceptions to patterns) |
+| pattern | Repeatable approach being applied |
+| interface | API/interface definitions |
 | cleanup | Removing old code |
 
 **Grouping test**: Hunks in a section should be semantically related, not just in the same file.
