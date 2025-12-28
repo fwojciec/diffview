@@ -38,6 +38,13 @@ make validate     # Quality gate - run before completing any task
 - `mock/`: manual mocks with function fields for testing
 - `cmd/diffview/`: wires everything together
 
+**File Naming Convention**:
+- `foo/foo.go`: shared utilities for the package
+- `foo/foo_test.go`: shared test utilities (in `foo_test` package)
+- Entity files: named after domain entity (`user.go`, `viewer.go`)
+
+When uncertain about where code belongs, use the `go-standard-package-layout` skill.
+
 ## Skills
 
 ### Architecture

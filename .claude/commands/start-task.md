@@ -149,9 +149,19 @@ The question: "Does this preserve our capacity for change?" - not "Do we need th
 
 Use `superpowers:receiving-code-review` to evaluate each suggestion on merit. Accept what improves correctness or structural discipline. Push back on stylistic preferences.
 
-**If beads-review recommends issue updates:**
-- Update current issue notes with review findings
-- Update downstream issues if insights affect their specs
+**Handling beads-review feedback:**
+
+The beads-review evaluates your changes against downstream issues. Always act on its feedback:
+
+1. **DOWNSTREAM_UPDATES section**: If beads-review identifies implications for downstream issues:
+   - Run `bd show <downstream-id>` to read the current issue description and notes
+   - Evaluate whether the feedback is actionable (does it change requirements, add constraints, or provide integration guidance?)
+   - If actionable: `bd update <downstream-id> --notes "..."` with specific integration notes, API contracts, or considerations discovered during this implementation
+   - Commit beads changes: `git add .beads/ && git commit -m "Add integration notes to <downstream-id>"`
+
+2. **CURRENT_ISSUE_NOTES section**: Update the current issue's notes with any review findings worth preserving
+
+3. **IMPLEMENTATION_ISSUES section**: Address any issues flagged before proceeding
 
 **If changes are needed:**
 - Implement fixes (return to step 5 if substantial)
