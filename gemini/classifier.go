@@ -123,6 +123,9 @@ func (c *Classifier) Classify(ctx context.Context, input diffview.Classification
 		return nil, fmt.Errorf("gemini: failed to parse response: %w", err)
 	}
 
+	// Deterministically reorder sections based on narrative type
+	classification.OrderSections()
+
 	return &classification, nil
 }
 
@@ -175,11 +178,11 @@ For the overall change, determine:
 Group hunks into sections with meaningful roles that tell the story of the change.
 
 **Order sections to tell a coherent story.** The array order determines the reading order:
-- cause-effect: problem → fix → test → supporting
-- core-periphery: core → supporting → noise
-- before-after: old pattern removal → new pattern → test
-- rule-instances: rule definition → instances
-- entry-implementation: API/entry → implementation → test
+- cause-effect: problem → fix → test → supporting → cleanup
+- core-periphery: core → supporting → cleanup
+- before-after: cleanup (old pattern) → core (new pattern) → test → supporting
+- rule-instances: rule → exception → core → supporting → cleanup
+- entry-implementation: integration → core → test → supporting → cleanup
 
 Rules:
 - Every hunk from the input must appear in exactly one section
