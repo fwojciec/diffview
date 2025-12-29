@@ -158,33 +158,73 @@ func BuildClassificationPrompt(formattedInput string) string {
 
 %s
 
-## Task
+## Why Narrative Structure Matters
 
-Classify this change and organize the hunks into a coherent narrative structure.
+Code reviews are cognitively demanding. Research shows that developers process changes more effectively when presented as stories rather than lists. Each narrative follows a three-act structure:
 
-For each hunk, determine:
-- **category**: refactoring (restructure without behavior change), systematic (mechanical changes like renames), core (essential logic change), noise (formatting, whitespace)
-- **collapsed**: whether it can be collapsed in a diff viewer (true for noise, often true for systematic; never collapse tests - they verify intent and are essential for review)
+- **Exposition**: Context and setup (what exists, what's the problem)
+- **Confrontation**: The change itself (the fix, new feature, transformation)
+- **Resolution**: Validation and cleanup (tests proving it works, supporting changes)
 
-For the overall change, determine:
-- **change_type**: bugfix, feature, refactor, chore, docs
-- **narrative**: The storytelling pattern that best explains this change:
-  - cause-effect: A problem leads to a fix (common for bugfixes)
-  - core-periphery: Central change with supporting updates (common for features)
-  - before-after: Transformation from old to new pattern (common for refactors)
-  - rule-instances: A pattern applied in multiple places
-  - entry-implementation: API/interface plus its implementation
+## Classifying the Change
 
-Group hunks into sections with meaningful roles that tell the story of the change.
+Determine the **change_type** (bugfix, feature, refactor, chore, docs) and select a **narrative** that best tells the story:
 
-**Order sections to tell a coherent story.** The array order determines the reading order:
+1. **Is it fixing a bug or issue?** (change_type: bugfix) → cause-effect
+   - Shows the problem, then the fix, then proof it works
+   - Exposition: the buggy code (problem)
+   - Confrontation: the fix
+   - Resolution: tests validating the fix
+
+2. **Is it replacing an old pattern with a new one?** (change_type: refactor) → before-after
+   - Shows the transformation from old to new
+   - Exposition: what's being removed (cleanup)
+   - Confrontation: the new pattern (core)
+   - Resolution: tests proving the new pattern works
+
+3. **Is it adding a new API/interface with implementation?** (change_type: feature) → entry-implementation
+   - Shows the contract first, then the implementation
+   - Exposition: the interface/API (interface)
+   - Confrontation: the implementation (core)
+   - Resolution: tests and supporting changes
+
+4. **Is it applying the same pattern in multiple places?** (change_type: refactor) → rule-instances
+   - Shows the pattern, then its applications
+   - Exposition: the pattern (pattern)
+   - Confrontation: applications of the pattern (core)
+   - Resolution: tests validating the applications
+
+5. **Otherwise (feature, enhancement, general change)?** (change_type: feature/chore/docs) → core-periphery
+   - Shows the central change and its ripple effects
+   - Exposition: the core change (core)
+   - Confrontation: supporting updates (supporting)
+   - Resolution: tests and cleanup
+
+## Section Ordering Principles
+
+Order sections to tell a coherent story. The array order determines reading order:
+
+1. **Context before detail**: Show "why" before "what" (exposition before action)
+2. **High-impact first**: Core changes before peripheral ones
+3. **Tests as validation**: Tests belong near the end as proof (resolution/denouement)
+4. **Collapsed sections last**: Sections with all collapsed hunks should appear at the end
+
+Standard orderings by narrative:
 - cause-effect: problem → fix → test → supporting → cleanup
 - core-periphery: core → supporting → test → cleanup
 - before-after: cleanup (old pattern) → core (new pattern) → supporting → test
 - rule-instances: pattern → core → test → supporting → cleanup
 - entry-implementation: interface → core → test → supporting → cleanup
 
-Rules:
+## Classifying Hunks
+
+For each hunk, determine:
+- **category**: refactoring (restructure without behavior change), systematic (mechanical changes like renames), core (essential logic change), noise (formatting, whitespace)
+- **collapsed**: whether to collapse in a diff viewer (true for noise, often true for systematic; never collapse tests - they verify intent and are essential for review)
+
+Group hunks into sections with meaningful roles that tell the story of the change.
+
+## Rules
 - Every hunk from the input must appear in exactly one section
 - hunk_index is 0-based within each file
 - collapse_text provides a summary when collapsed is true`, formattedInput)
