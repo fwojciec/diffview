@@ -50,6 +50,15 @@ type EvalModel struct {
 	mode        Mode
 	ready       bool
 
+	// Story mode state
+	storyMode         bool               // true = section-by-section navigation, false = raw diff
+	activeSection     int                // current section index (0-based)
+	reviewedSections  map[int]bool       // sections marked as reviewed for current case
+	collapsedHunks    map[hunkKey]bool   // hunk collapse state
+	llmCollapsedHunks map[hunkKey]bool   // original LLM collapse decisions
+	hunkCategories    map[hunkKey]string // hunk → category for styling
+	collapseText      map[hunkKey]string // hunk → collapse text
+
 	// Rendering
 	width, height    int
 	styles           diffview.Styles
@@ -139,16 +148,27 @@ func WithCaseSaver(s diffview.EvalCaseSaver, path string) EvalModelOption {
 // NewEvalModel creates a new EvalModel with the given cases.
 func NewEvalModel(cases []diffview.EvalCase, opts ...EvalModelOption) EvalModel {
 	m := EvalModel{
-		cases:       cases,
-		judgments:   make(map[string]*diffview.Judgment),
-		activePanel: PanelDiff,
-		mode:        ModeReview,
-		keymap:      DefaultEvalKeyMap(),
-		styles:      defaultStyles(), // Use same defaults as viewer
+		cases:             cases,
+		judgments:         make(map[string]*diffview.Judgment),
+		activePanel:       PanelDiff,
+		mode:              ModeReview,
+		keymap:            DefaultEvalKeyMap(),
+		styles:            defaultStyles(), // Use same defaults as viewer
+		reviewedSections:  make(map[int]bool),
+		collapsedHunks:    make(map[hunkKey]bool),
+		llmCollapsedHunks: make(map[hunkKey]bool),
+		hunkCategories:    make(map[hunkKey]string),
+		collapseText:      make(map[hunkKey]string),
 	}
 
 	for _, opt := range opts {
 		opt(&m)
+	}
+
+	// Enable story mode by default if first case has sections
+	if len(cases) > 0 && cases[0].Story != nil && len(cases[0].Story.Sections) > 0 {
+		m.storyMode = true
+		m.rebuildStoryMaps()
 	}
 
 	return m
@@ -194,6 +214,8 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keymap.NextCase):
 		if m.currentIndex < len(m.cases)-1 {
 			m.currentIndex++
+			m.rebuildStoryMaps()
+			m.updateStoryModeForCase()
 			m.updateViewportContent()
 		}
 		return m, nil
@@ -201,6 +223,8 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keymap.PrevCase):
 		if m.currentIndex > 0 {
 			m.currentIndex--
+			m.rebuildStoryMaps()
+			m.updateStoryModeForCase()
 			m.updateViewportContent()
 		}
 		return m, nil
@@ -208,6 +232,8 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keymap.NextUnjudged):
 		if idx := m.findNextUnjudged(); idx != -1 && idx != m.currentIndex {
 			m.currentIndex = idx
+			m.rebuildStoryMaps()
+			m.updateStoryModeForCase()
 			m.updateViewportContent()
 		}
 		return m, nil
@@ -215,6 +241,8 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keymap.PrevUnjudged):
 		if idx := m.findPrevUnjudged(); idx != -1 && idx != m.currentIndex {
 			m.currentIndex = idx
+			m.rebuildStoryMaps()
+			m.updateStoryModeForCase()
 			m.updateViewportContent()
 		}
 		return m, nil
@@ -272,6 +300,28 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.diffViewport.GotoBottom()
 		} else {
 			m.storyViewport.GotoBottom()
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keymap.ToggleMode):
+		m.toggleStoryMode()
+		return m, nil
+
+	case key.Matches(msg, m.keymap.NextSection):
+		if m.storyMode {
+			m.gotoNextSection()
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keymap.PrevSection):
+		if m.storyMode {
+			m.gotoPrevSection()
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keymap.ToggleCollapse):
+		if m.storyMode {
+			m.toggleCollapsedHunks()
 		}
 		return m, nil
 
@@ -408,16 +458,30 @@ func (m *EvalModel) updateViewportContent() {
 
 	c := m.cases[m.currentIndex]
 
+	// Use filtered diff in story mode, full diff otherwise
+	diffToRender := m.filteredDiff()
+
 	// Render diff content using styled renderer
 	diffContent := renderDiff(renderConfig{
-		diff:             &c.Input.Diff,
+		diff:             diffToRender,
 		styles:           m.styles,
 		renderer:         nil, // Use default renderer
 		width:            m.width,
 		languageDetector: m.languageDetector,
 		tokenizer:        m.tokenizer,
 		wordDiffer:       m.wordDiffer,
+		collapsedHunks:   m.collapsedHunks,
+		hunkCategories:   m.hunkCategories,
+		collapseText:     m.collapseText,
 	})
+
+	// In story mode, prepend section header to diff content
+	if m.storyMode && c.Story != nil && m.activeSection < len(c.Story.Sections) {
+		section := c.Story.Sections[m.activeSection]
+		header := m.renderSectionHeader(section)
+		diffContent = header + "\n" + diffContent
+	}
+
 	m.diffViewport.SetContent(diffContent)
 	m.diffViewport.GotoTop()
 
@@ -557,6 +621,239 @@ func (m *EvalModel) saveCurrentCase() {
 	c := m.cases[m.currentIndex]
 	// Best-effort save - errors are silently ignored in UI
 	_ = m.caseSaver.Save(m.caseSaverPath, c)
+}
+
+// rebuildStoryMaps rebuilds the hunk maps from the current case's story.
+// Call this when switching cases or when story mode is enabled.
+func (m *EvalModel) rebuildStoryMaps() {
+	// Clear existing maps
+	m.collapsedHunks = make(map[hunkKey]bool)
+	m.llmCollapsedHunks = make(map[hunkKey]bool)
+	m.hunkCategories = make(map[hunkKey]string)
+	m.collapseText = make(map[hunkKey]string)
+	m.reviewedSections = make(map[int]bool)
+	m.activeSection = 0
+
+	if len(m.cases) == 0 {
+		return
+	}
+
+	c := m.cases[m.currentIndex]
+	if c.Story == nil {
+		return
+	}
+
+	// Build lookup maps from story classification
+	for _, section := range c.Story.Sections {
+		for _, ref := range section.Hunks {
+			key := hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}
+			m.hunkCategories[key] = ref.Category
+			if ref.CollapseText != "" {
+				m.collapseText[key] = ref.CollapseText
+			}
+			// Collapse if explicitly marked or noise category
+			if ref.Collapsed || ref.Category == "noise" {
+				m.collapsedHunks[key] = true
+				m.llmCollapsedHunks[key] = true
+			}
+		}
+	}
+}
+
+// toggleStoryMode toggles between story mode and raw mode.
+// Story mode is only available when the current case has sections.
+func (m *EvalModel) toggleStoryMode() {
+	if len(m.cases) == 0 {
+		return
+	}
+
+	c := m.cases[m.currentIndex]
+	// Only allow story mode if the case has sections
+	if c.Story == nil || len(c.Story.Sections) == 0 {
+		m.storyMode = false
+		return
+	}
+
+	m.storyMode = !m.storyMode
+	if m.storyMode {
+		m.rebuildStoryMaps()
+	}
+	m.updateViewportContent()
+}
+
+// updateStoryModeForCase updates story mode based on the current case.
+// Enables story mode if the case has sections, disables if it doesn't.
+func (m *EvalModel) updateStoryModeForCase() {
+	if len(m.cases) == 0 {
+		m.storyMode = false
+		return
+	}
+
+	c := m.cases[m.currentIndex]
+	// Enable story mode if the case has sections
+	m.storyMode = c.Story != nil && len(c.Story.Sections) > 0
+}
+
+// gotoNextSection moves to the next section and marks the current one as reviewed.
+func (m *EvalModel) gotoNextSection() {
+	if len(m.cases) == 0 {
+		return
+	}
+
+	c := m.cases[m.currentIndex]
+	if c.Story == nil || len(c.Story.Sections) == 0 {
+		return
+	}
+
+	// Mark current section as reviewed
+	m.reviewedSections[m.activeSection] = true
+
+	// Move to next section if not at end
+	if m.activeSection < len(c.Story.Sections)-1 {
+		m.activeSection++
+		m.updateViewportContent()
+		m.diffViewport.GotoTop()
+	}
+}
+
+// gotoPrevSection moves to the previous section.
+func (m *EvalModel) gotoPrevSection() {
+	if len(m.cases) == 0 {
+		return
+	}
+
+	c := m.cases[m.currentIndex]
+	if c.Story == nil || len(c.Story.Sections) == 0 {
+		return
+	}
+
+	// Move to previous section if not at start
+	if m.activeSection > 0 {
+		m.activeSection--
+		m.updateViewportContent()
+		m.diffViewport.GotoTop()
+	}
+}
+
+// renderSectionHeader formats the section header for display in the diff panel.
+func (m *EvalModel) renderSectionHeader(section diffview.Section) string {
+	header := fmt.Sprintf("[%s] %s", section.Role, section.Title)
+	if section.Explanation != "" {
+		header += "\n" + section.Explanation
+	}
+	return header
+}
+
+// renderSectionProgress returns a string of indicators showing section review status.
+// ✓ = reviewed, ● = current, ○ = pending
+func (m *EvalModel) renderSectionProgress(sections []diffview.Section) string {
+	var indicators []string
+	for i := range sections {
+		if m.reviewedSections[i] {
+			indicators = append(indicators, "✓")
+		} else if i == m.activeSection {
+			indicators = append(indicators, "●")
+		} else {
+			indicators = append(indicators, "○")
+		}
+	}
+	return strings.Join(indicators, " ")
+}
+
+// toggleCollapsedHunks toggles LLM-collapsed hunks in the current section.
+// Only hunks that were originally marked as collapsed by the LLM are affected.
+func (m *EvalModel) toggleCollapsedHunks() {
+	if len(m.cases) == 0 {
+		return
+	}
+
+	c := m.cases[m.currentIndex]
+	if c.Story == nil || len(c.Story.Sections) == 0 {
+		return
+	}
+
+	// Get hunks in current section
+	if m.activeSection < 0 || m.activeSection >= len(c.Story.Sections) {
+		return
+	}
+	sectionHunks := c.Story.Sections[m.activeSection].Hunks
+
+	// Only consider hunks that were originally collapsed by LLM
+	var llmCollapsedKeys []hunkKey
+	for _, ref := range sectionHunks {
+		key := hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}
+		if m.llmCollapsedHunks[key] {
+			llmCollapsedKeys = append(llmCollapsedKeys, key)
+		}
+	}
+
+	if len(llmCollapsedKeys) == 0 {
+		return // No LLM-collapsed hunks to toggle
+	}
+
+	// Count how many are currently collapsed
+	collapsedCount := 0
+	for _, key := range llmCollapsedKeys {
+		if m.collapsedHunks[key] {
+			collapsedCount++
+		}
+	}
+
+	// If more than half are collapsed, expand all; otherwise collapse all
+	newState := collapsedCount <= len(llmCollapsedKeys)/2
+	for _, key := range llmCollapsedKeys {
+		m.collapsedHunks[key] = newState
+	}
+
+	m.updateViewportContent()
+}
+
+// filteredDiff returns a diff containing only hunks from the active section.
+// If not in story mode or no sections exist, returns the full diff.
+func (m *EvalModel) filteredDiff() *diffview.Diff {
+	if len(m.cases) == 0 {
+		return nil
+	}
+
+	c := m.cases[m.currentIndex]
+	diff := &c.Input.Diff
+
+	// Return full diff if not in story mode or no sections
+	if !m.storyMode || c.Story == nil || len(c.Story.Sections) == 0 {
+		return diff
+	}
+
+	// Validate active section index
+	if m.activeSection < 0 || m.activeSection >= len(c.Story.Sections) {
+		return diff
+	}
+
+	// Build a set of hunks in the active section
+	section := c.Story.Sections[m.activeSection]
+	activeHunks := make(map[hunkKey]bool, len(section.Hunks))
+	for _, ref := range section.Hunks {
+		activeHunks[hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}] = true
+	}
+
+	// Create filtered diff with only files/hunks from active section
+	var filteredFiles []diffview.FileDiff
+	for _, file := range diff.Files {
+		path := filePath(file)
+		var filteredHunks []diffview.Hunk
+		for hunkIdx, hunk := range file.Hunks {
+			if activeHunks[hunkKey{file: path, hunkIndex: hunkIdx}] {
+				filteredHunks = append(filteredHunks, hunk)
+			}
+		}
+		// Only include file if it has hunks in this section
+		if len(filteredHunks) > 0 {
+			filteredFile := file
+			filteredFile.Hunks = filteredHunks
+			filteredFiles = append(filteredFiles, filteredFile)
+		}
+	}
+
+	return &diffview.Diff{Files: filteredFiles}
 }
 
 // formatCaseForExport formats an EvalCase as markdown for LLM-assisted review.
@@ -747,6 +1044,14 @@ func (m EvalModel) renderHelpView() string {
 	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("g/G"), descStyle.Render("go to top/bottom")))
 	s.WriteString("\n")
 
+	// Story Mode
+	s.WriteString(headerStyle.Render("Story Mode"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("s/S"), descStyle.Render("next/previous section")))
+	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("m"), descStyle.Render("toggle story/raw mode")))
+	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("z"), descStyle.Render("toggle collapsed hunks")))
+	s.WriteString("\n")
+
 	// Judgment
 	s.WriteString(headerStyle.Render("Judgment"))
 	s.WriteString("\n")
@@ -836,7 +1141,26 @@ func (m EvalModel) renderStatusBar() string {
 	caseInfo := fmt.Sprintf("case %d/%d", m.currentIndex+1, len(m.cases))
 	progress := fmt.Sprintf("%d/%d reviewed", judged, len(m.cases))
 	indicatorBar := strings.Join(indicators, " ")
+
+	// Mode and section indicator
+	var modeInfo string
+	var sectionProgress string
+	if m.storyMode {
+		c := m.cases[m.currentIndex]
+		if c.Story != nil && len(c.Story.Sections) > 0 {
+			modeInfo = fmt.Sprintf("story mode │ section %d/%d", m.activeSection+1, len(c.Story.Sections))
+			sectionProgress = m.renderSectionProgress(c.Story.Sections)
+		} else {
+			modeInfo = "story mode"
+		}
+	} else {
+		modeInfo = "raw mode"
+	}
+
 	help := "[p]ass [f]ail [c]ritique [y]ank ]/[nav [?]help [q]uit"
 
-	return fmt.Sprintf("%s │ %s │ %s │ %s", caseInfo, progress, indicatorBar, help)
+	if sectionProgress != "" {
+		return fmt.Sprintf("%s │ %s │ %s │ %s │ %s │ %s", modeInfo, sectionProgress, caseInfo, progress, indicatorBar, help)
+	}
+	return fmt.Sprintf("%s │ %s │ %s │ %s │ %s", modeInfo, caseInfo, progress, indicatorBar, help)
 }

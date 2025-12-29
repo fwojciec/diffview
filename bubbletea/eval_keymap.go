@@ -25,6 +25,12 @@ type EvalKeyMap struct {
 	NextHunk key.Binding
 	PrevHunk key.Binding
 
+	// Story mode navigation
+	NextSection    key.Binding
+	PrevSection    key.Binding
+	ToggleMode     key.Binding
+	ToggleCollapse key.Binding
+
 	// Judgment
 	Pass     key.Binding
 	Fail     key.Binding
@@ -96,6 +102,22 @@ func DefaultEvalKeyMap() EvalKeyMap {
 		PrevHunk: key.NewBinding(
 			key.WithKeys("N"),
 			key.WithHelp("N", "previous hunk"),
+		),
+		NextSection: key.NewBinding(
+			key.WithKeys("s"),
+			key.WithHelp("s", "next section"),
+		),
+		PrevSection: key.NewBinding(
+			key.WithKeys("S"),
+			key.WithHelp("S", "previous section"),
+		),
+		ToggleMode: key.NewBinding(
+			key.WithKeys("m"),
+			key.WithHelp("m", "toggle story/raw mode"),
+		),
+		ToggleCollapse: key.NewBinding(
+			key.WithKeys("z"),
+			key.WithHelp("z", "toggle collapsed hunks"),
 		),
 		Pass: key.NewBinding(
 			key.WithKeys("p"),
