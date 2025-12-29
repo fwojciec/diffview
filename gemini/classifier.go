@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"strings"
 	"time"
 
 	"github.com/fwojciec/diffstory"
@@ -20,14 +21,16 @@ const DefaultClassifyTimeout = 60 * time.Second
 
 // Classifier implements diffview.StoryClassifier using Google Gemini.
 type Classifier struct {
-	client       GenerativeClient
-	model        string
-	formatter    diffview.PromptFormatter
-	timeout      time.Duration
-	maxRetries   int
-	baseDelay    time.Duration
-	maxDelay     time.Duration
-	retryEnabled bool
+	client                 GenerativeClient
+	model                  string
+	formatter              diffview.PromptFormatter
+	timeout                time.Duration
+	maxRetries             int
+	baseDelay              time.Duration
+	maxDelay               time.Duration
+	retryEnabled           bool
+	maxValidationRetries   int
+	validationRetryEnabled bool
 }
 
 // ClassifierOption configures a Classifier.
@@ -50,6 +53,16 @@ func WithRetry(maxRetries int, baseDelay, maxDelay time.Duration) ClassifierOpti
 		c.baseDelay = baseDelay
 		c.maxDelay = maxDelay
 		c.retryEnabled = true
+	}
+}
+
+// WithValidationRetry enables retry when LLM output contains invalid hunk references.
+// maxRetries is the maximum number of attempts (including the first).
+// When validation fails, a corrective prompt with specific errors is sent.
+func WithValidationRetry(maxRetries int) ClassifierOption {
+	return func(c *Classifier) {
+		c.maxValidationRetries = maxRetries
+		c.validationRetryEnabled = true
 	}
 }
 
@@ -76,12 +89,61 @@ func (c *Classifier) Classify(ctx context.Context, input diffview.Classification
 	formattedInput := c.formatter.Format(input)
 	prompt := BuildClassificationPrompt(formattedInput)
 
-	contents := []*Content{{
-		Parts: []*Part{{Text: prompt}},
-	}}
+	maxValidationAttempts := 1
+	if c.validationRetryEnabled {
+		maxValidationAttempts = c.maxValidationRetries
+	}
 
-	config := BuildClassificationConfig()
+	var classification *diffview.StoryClassification
+	var validationErrs []diffview.ValidationError
 
+	for validationAttempt := range maxValidationAttempts {
+		// Build prompt - include correction context if retrying
+		currentPrompt := prompt
+		if validationAttempt > 0 && len(validationErrs) > 0 {
+			currentPrompt = buildCorrectionPrompt(prompt, validationErrs)
+		}
+
+		contents := []*Content{{
+			Parts: []*Part{{Text: currentPrompt}},
+		}}
+
+		config := BuildClassificationConfig()
+
+		resp, err := c.callWithRetry(ctx, contents, config)
+		if err != nil {
+			return nil, err
+		}
+
+		var parsed diffview.StoryClassification
+		if err := json.Unmarshal([]byte(resp.Text), &parsed); err != nil {
+			return nil, fmt.Errorf("gemini: failed to parse response: %w", err)
+		}
+
+		classification = &parsed
+
+		// Skip validation if not enabled
+		if !c.validationRetryEnabled {
+			break
+		}
+
+		// Validate the classification against the diff
+		validationErrs = diffview.ValidateClassification(&input.Diff, classification)
+		if len(validationErrs) == 0 {
+			break // Valid classification
+		}
+
+		// If this was the last attempt and still invalid, return error
+		if validationAttempt == maxValidationAttempts-1 {
+			return nil, fmt.Errorf("gemini: validation failed after %d attempts: %v", maxValidationAttempts, validationErrs)
+		}
+	}
+
+	return classification, nil
+}
+
+// callWithRetry handles API-level retries with exponential backoff.
+func (c *Classifier) callWithRetry(ctx context.Context, contents []*Content, config *GenerateContentConfig) (*GenerateContentResponse, error) {
 	var resp *GenerateContentResponse
 	var lastErr error
 
@@ -118,12 +180,25 @@ func (c *Classifier) Classify(ctx context.Context, input diffview.Classification
 		return nil, fmt.Errorf("gemini: returned nil response")
 	}
 
-	var classification diffview.StoryClassification
-	if err := json.Unmarshal([]byte(resp.Text), &classification); err != nil {
-		return nil, fmt.Errorf("gemini: failed to parse response: %w", err)
+	return resp, nil
+}
+
+// buildCorrectionPrompt creates a prompt that includes the original prompt
+// plus specific correction instructions based on validation errors.
+func buildCorrectionPrompt(originalPrompt string, errs []diffview.ValidationError) string {
+	var errDetails strings.Builder
+	errDetails.WriteString("\n\n## CORRECTION REQUIRED\n\n")
+	errDetails.WriteString("Your previous response contained invalid hunk references. Please fix the following errors:\n\n")
+
+	for _, err := range errs {
+		errDetails.WriteString("- ")
+		errDetails.WriteString(err.Error())
+		errDetails.WriteString("\n")
 	}
 
-	return &classification, nil
+	errDetails.WriteString("\nPlease provide a corrected classification with valid hunk indices.")
+
+	return originalPrompt + errDetails.String()
 }
 
 // isRetryable determines if an error should trigger a retry.
@@ -231,7 +306,7 @@ Group hunks into sections with meaningful roles that tell the story of the chang
 
 ## Rules
 - Every hunk from the input must appear in exactly one section
-- hunk_index is 0-based within each file
+- **CRITICAL: hunk_index is 0-based.** If a file has N hunks, valid indices are 0 through N-1. For example, a file with 7 hunks has valid indices 0, 1, 2, 3, 4, 5, 6 (NOT 7).
 - collapse_text provides a summary when collapsed is true`, formattedInput)
 }
 
@@ -312,7 +387,7 @@ func classificationSchema() *Schema {
 									},
 									"hunk_index": {
 										Type:        "integer",
-										Description: "0-based hunk index within the file",
+										Description: "0-based hunk index within the file. For a file with N hunks, valid values are 0 to N-1.",
 									},
 									"category": {
 										Type:        "string",
