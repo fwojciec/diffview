@@ -176,3 +176,25 @@ func (r *Runner) MergeBase(ctx context.Context, repoPath, ref1, ref2 string) (st
 	}
 	return strings.TrimSpace(string(output)), nil
 }
+
+// DefaultBranch returns the default branch name from origin/HEAD.
+// Returns an error if no remote is configured.
+func (r *Runner) DefaultBranch(ctx context.Context, repoPath string) (string, error) {
+	args := []string{"-C", repoPath, "symbolic-ref", "refs/remotes/origin/HEAD"}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr := string(exitErr.Stderr)
+			if strings.Contains(stderr, "ref refs/remotes/origin/HEAD is not a symbolic ref") {
+				return "", fmt.Errorf("no remote configured: origin/HEAD not set")
+			}
+			return "", fmt.Errorf("git symbolic-ref failed: %s", stderr)
+		}
+		return "", fmt.Errorf("git symbolic-ref failed: %w", err)
+	}
+	// Output is like "refs/remotes/origin/main" - extract just "main"
+	ref := strings.TrimSpace(string(output))
+	branch := strings.TrimPrefix(ref, "refs/remotes/origin/")
+	return branch, nil
+}

@@ -32,38 +32,23 @@ var ErrOnBaseBranch = errors.New("already on base branch, no changes to show")
 
 // App encapsulates the application logic for testing.
 type App struct {
-	Input      io.Reader                // Read diff from stdin (if FilePath is empty)
-	FilePath   string                   // Read diff from file (takes precedence over Input)
-	GitRunner  diffview.GitRunner       // Git runner for branch mode
-	RepoPath   string                   // Repository path for branch mode
-	BaseBranch string                   // Base branch to compare against (e.g., "main")
+	GitRunner  diffview.GitRunner       // Git runner for git operations
+	RepoPath   string                   // Repository path
+	BaseBranch string                   // Base branch (auto-detected if empty)
 	Classifier diffview.StoryClassifier // Classifier for story generation
 }
 
 // Run parses the diff input and classifies it.
 // Returns the parsed diff and classification for TUI display.
 func (a *App) Run(ctx context.Context) (*diffview.Diff, *diffview.StoryClassification, error) {
-	var input io.Reader
-	if a.FilePath != "" {
-		f, err := os.Open(a.FilePath)
-		if err != nil {
-			return nil, nil, err
-		}
-		defer f.Close()
-		input = f
-	} else if a.GitRunner != nil {
-		// Branch mode: get diff from git
-		diffStr, err := a.GitRunner.DiffRange(ctx, a.RepoPath, a.BaseBranch, "HEAD")
-		if err != nil {
-			return nil, nil, err
-		}
-		input = strings.NewReader(diffStr)
-	} else {
-		input = a.Input
+	// Get diff from git
+	diffStr, err := a.GitRunner.DiffRange(ctx, a.RepoPath, a.BaseBranch, "HEAD")
+	if err != nil {
+		return nil, nil, err
 	}
 
 	parser := gitdiff.NewParser()
-	diff, err := parser.Parse(input)
+	diff, err := parser.Parse(strings.NewReader(diffStr))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -84,9 +69,6 @@ func (a *App) Run(ctx context.Context) (*diffview.Diff, *diffview.StoryClassific
 
 	return diff, classification, nil
 }
-
-// ErrNoInput is returned when no diff input is provided.
-var ErrNoInput = errors.New("no input: pipe a diff or provide a file path")
 
 // spinner displays a progress indicator on stderr while a long-running operation executes.
 type spinner struct {
@@ -169,6 +151,28 @@ func run() error {
 		return fmt.Errorf("GEMINI_API_KEY environment variable required")
 	}
 
+	// Set up git runner and detect repo
+	gitRunner := git.NewRunner()
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Auto-detect base branch from origin/HEAD
+	baseBranch, err := gitRunner.DefaultBranch(ctx, cwd)
+	if err != nil {
+		return fmt.Errorf("failed to detect base branch: %w", err)
+	}
+
+	// Check if we're on the base branch
+	currentBranch, err := gitRunner.CurrentBranch(ctx, cwd)
+	if err != nil {
+		return fmt.Errorf("failed to get current branch: %w", err)
+	}
+	if currentBranch == baseBranch {
+		return ErrOnBaseBranch
+	}
+
 	// Set up Gemini client and classifier
 	client, err := gemini.NewClient(ctx, apiKey)
 	if err != nil {
@@ -180,46 +184,10 @@ func run() error {
 	classifier := fs.NewClassifier(geminiClassifier, fs.DefaultCacheDir())
 
 	app := &App{
+		GitRunner:  gitRunner,
+		RepoPath:   cwd,
+		BaseBranch: baseBranch,
 		Classifier: classifier,
-	}
-
-	// Check for file path argument
-	if len(os.Args) >= 2 {
-		app.FilePath = os.Args[1]
-	} else {
-		// Check if stdin is a pipe
-		stat, err := os.Stdin.Stat()
-		if err != nil {
-			return fmt.Errorf("error checking stdin: %w", err)
-		}
-		if (stat.Mode() & os.ModeCharDevice) == 0 {
-			// Stdin is a pipe, use pipe mode
-			app.Input = os.Stdin
-		} else {
-			// No pipe, use branch mode
-			gitRunner := git.NewRunner()
-			cwd, err := os.Getwd()
-			if err != nil {
-				return fmt.Errorf("failed to get current directory: %w", err)
-			}
-
-			// Check if we're on the base branch
-			currentBranch, err := gitRunner.CurrentBranch(ctx, cwd)
-			if err != nil {
-				return fmt.Errorf("failed to get current branch: %w", err)
-			}
-			baseBranch := os.Getenv("DIFFSTORY_BASE_BRANCH")
-			if baseBranch == "" {
-				baseBranch = "main"
-			}
-			if currentBranch == baseBranch {
-				return ErrOnBaseBranch
-			}
-
-			app.GitRunner = gitRunner
-			app.RepoPath = cwd
-			app.BaseBranch = baseBranch
-		}
 	}
 
 	// Show spinner while processing (only if stderr is a terminal)

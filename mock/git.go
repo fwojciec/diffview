@@ -22,6 +22,7 @@ type GitRunner struct {
 	DiffRangeFn      func(ctx context.Context, repoPath, base, head string) (string, error)
 	CurrentBranchFn  func(ctx context.Context, repoPath string) (string, error)
 	MergeBaseFn      func(ctx context.Context, repoPath, ref1, ref2 string) (string, error)
+	DefaultBranchFn  func(ctx context.Context, repoPath string) (string, error)
 }
 
 func (g *GitRunner) Log(ctx context.Context, repoPath string, limit int) ([]string, error) {
@@ -54,4 +55,8 @@ func (g *GitRunner) CurrentBranch(ctx context.Context, repoPath string) (string,
 
 func (g *GitRunner) MergeBase(ctx context.Context, repoPath, ref1, ref2 string) (string, error) {
 	return g.MergeBaseFn(ctx, repoPath, ref1, ref2)
+}
+
+func (g *GitRunner) DefaultBranch(ctx context.Context, repoPath string) (string, error) {
+	return g.DefaultBranchFn(ctx, repoPath)
 }

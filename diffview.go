@@ -118,4 +118,7 @@ type GitRunner interface {
 	CurrentBranch(ctx context.Context, repoPath string) (string, error)
 	// MergeBase returns the best common ancestor commit between two refs.
 	MergeBase(ctx context.Context, repoPath, ref1, ref2 string) (string, error)
+	// DefaultBranch returns the default branch name from origin/HEAD.
+	// Returns an error if no remote is configured.
+	DefaultBranch(ctx context.Context, repoPath string) (string, error)
 }
