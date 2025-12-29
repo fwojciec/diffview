@@ -143,9 +143,34 @@ func main() {
 	}
 }
 
+func usage() {
+	fmt.Fprintf(os.Stderr, `Usage: diffstory [command]
+
+Commands:
+  (default)              Analyze current branch diff with LLM classification
+  replay <file> [index]  Replay a saved eval case from JSONL file
+
+Examples:
+  diffstory                      # Analyze current branch
+  diffstory replay cases.jsonl   # Replay first case
+  diffstory replay cases.jsonl 2 # Replay third case (0-indexed)
+`)
+}
+
 func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	// Check for subcommand
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "replay":
+			return runReplay(ctx)
+		case "-h", "--help", "help":
+			usage()
+			return nil
+		}
+	}
 
 	// Check for API key
 	apiKey := os.Getenv("GEMINI_API_KEY")
@@ -241,6 +266,57 @@ func run() error {
 		bubbletea.WithIntroSlide(),
 		bubbletea.WithStoryInput(classInput),
 		bubbletea.WithStoryCaseSaver(jsonl.NewSaver(), curatedPath),
+	)
+	p := tea.NewProgram(m,
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+		tea.WithContext(ctx),
+	)
+
+	_, err = p.Run()
+	return err
+}
+
+func runReplay(ctx context.Context) error {
+	// Parse replay arguments: replay <file> [index]
+	if len(os.Args) < 3 {
+		return fmt.Errorf("replay requires a file path: diffstory replay <file.jsonl> [index]")
+	}
+
+	filePath := os.Args[2]
+	index := 0
+	if len(os.Args) > 3 {
+		if _, err := fmt.Sscanf(os.Args[3], "%d", &index); err != nil {
+			return fmt.Errorf("invalid index %q: must be a non-negative integer", os.Args[3])
+		}
+	}
+
+	app := &ReplayApp{
+		Loader:   jsonl.NewLoader(),
+		FilePath: filePath,
+		Index:    index,
+	}
+
+	diff, story, err := app.Run()
+	if err != nil {
+		return err
+	}
+
+	// Set up syntax highlighting
+	theme := lipgloss.DefaultTheme()
+	detector := chroma.NewDetector()
+	tokenizer, err := chroma.NewTokenizer(chroma.StyleFromPalette(theme.Palette()))
+	if err != nil {
+		return fmt.Errorf("failed to set up syntax highlighting: %w", err)
+	}
+
+	// Launch StoryModel TUI (without case saving - this is replay mode)
+	m := bubbletea.NewStoryModel(diff, story,
+		bubbletea.WithStoryTheme(theme),
+		bubbletea.WithStoryLanguageDetector(detector),
+		bubbletea.WithStoryTokenizer(tokenizer),
+		bubbletea.WithStoryWordDiffer(worddiff.NewDiffer()),
+		bubbletea.WithIntroSlide(),
 	)
 	p := tea.NewProgram(m,
 		tea.WithAltScreen(),

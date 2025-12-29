@@ -80,3 +80,6 @@ test-results.json
 
 # Eval intermediate files (keep only final classified dataset)
 eval/cases/*-prs.jsonl
+
+# VHS generated recordings (keep tape files, ignore outputs)
+examples/*.gif
