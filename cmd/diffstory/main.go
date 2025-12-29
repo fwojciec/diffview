@@ -208,7 +208,10 @@ func run() error {
 			if err != nil {
 				return fmt.Errorf("failed to get current branch: %w", err)
 			}
-			baseBranch := "main"
+			baseBranch := os.Getenv("DIFFSTORY_BASE_BRANCH")
+			if baseBranch == "" {
+				baseBranch = "main"
+			}
 			if currentBranch == baseBranch {
 				return ErrOnBaseBranch
 			}
