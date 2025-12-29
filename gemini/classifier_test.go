@@ -365,3 +365,192 @@ func TestBuildClassificationConfig_SetsResponseSchema(t *testing.T) {
 	assert.Contains(t, config.ResponseSchema.Properties, "summary")
 	assert.Contains(t, config.ResponseSchema.Properties, "sections")
 }
+
+func TestClassifier_Classify_RetriesOnInvalidHunkReferences(t *testing.T) {
+	t.Parallel()
+
+	// First response has invalid hunk index (7 when only 0-6 are valid)
+	invalidClassification := diffview.StoryClassification{
+		ChangeType: "feature",
+		Narrative:  "core-periphery",
+		Summary:    "Add feature",
+		Sections: []diffview.Section{
+			{
+				Role:        "core",
+				Title:       "Main Change",
+				Explanation: "The core change",
+				Hunks: []diffview.HunkRef{
+					{File: "story.go", HunkIndex: 7, Category: "core", Collapsed: false}, // Invalid!
+				},
+			},
+		},
+	}
+
+	// Corrected response with valid index
+	validClassification := diffview.StoryClassification{
+		ChangeType: "feature",
+		Narrative:  "core-periphery",
+		Summary:    "Add feature",
+		Sections: []diffview.Section{
+			{
+				Role:        "core",
+				Title:       "Main Change",
+				Explanation: "The core change",
+				Hunks: []diffview.HunkRef{
+					{File: "story.go", HunkIndex: 6, Category: "core", Collapsed: false}, // Fixed!
+				},
+			},
+		},
+	}
+
+	callCount := 0
+	var capturedPrompts []string
+	mockClient := &gemini.MockGenerativeClient{
+		GenerateContentFn: func(ctx context.Context, model string, contents []*gemini.Content, config *gemini.GenerateContentConfig) (*gemini.GenerateContentResponse, error) {
+			callCount++
+			// Capture prompt for assertion
+			if len(contents) > 0 && len(contents[0].Parts) > 0 {
+				capturedPrompts = append(capturedPrompts, contents[0].Parts[0].Text)
+			}
+
+			var resp diffview.StoryClassification
+			if callCount == 1 {
+				resp = invalidClassification
+			} else {
+				resp = validClassification
+			}
+			responseJSON, _ := json.Marshal(resp)
+			return &gemini.GenerateContentResponse{Text: string(responseJSON)}, nil
+		},
+	}
+
+	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel,
+		gemini.WithValidationRetry(2)) // Enable validation retry
+
+	input := diffview.ClassificationInput{
+		Commits: []diffview.CommitBrief{{Message: "Add feature"}},
+		Diff: diffview.Diff{
+			Files: []diffview.FileDiff{
+				{
+					NewPath: "story.go",
+					Hunks:   make([]diffview.Hunk, 7), // Only indices 0-6 are valid
+				},
+			},
+		},
+	}
+
+	result, err := classifier.Classify(context.Background(), input)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, callCount, "should retry once after validation failure")
+	require.Len(t, capturedPrompts, 2)
+	// Second prompt should include error context about invalid hunk reference
+	assert.Contains(t, capturedPrompts[1], "hunk_index 7")
+	assert.Contains(t, capturedPrompts[1], "valid: 0-6")
+	// Result should have corrected index
+	assert.Equal(t, 6, result.Sections[0].Hunks[0].HunkIndex)
+}
+
+func TestClassifier_Classify_FailsAfterMaxValidationRetries(t *testing.T) {
+	t.Parallel()
+
+	// Always return invalid classification
+	invalidClassification := diffview.StoryClassification{
+		ChangeType: "feature",
+		Narrative:  "core-periphery",
+		Summary:    "Add feature",
+		Sections: []diffview.Section{
+			{
+				Role:        "core",
+				Title:       "Main",
+				Explanation: "test",
+				Hunks: []diffview.HunkRef{
+					{File: "story.go", HunkIndex: 99, Category: "core", Collapsed: false}, // Always invalid
+				},
+			},
+		},
+	}
+	responseJSON, err := json.Marshal(invalidClassification)
+	require.NoError(t, err)
+
+	callCount := 0
+	mockClient := &gemini.MockGenerativeClient{
+		GenerateContentFn: func(ctx context.Context, model string, contents []*gemini.Content, config *gemini.GenerateContentConfig) (*gemini.GenerateContentResponse, error) {
+			callCount++
+			return &gemini.GenerateContentResponse{Text: string(responseJSON)}, nil
+		},
+	}
+
+	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel,
+		gemini.WithValidationRetry(2))
+
+	input := diffview.ClassificationInput{
+		Commits: []diffview.CommitBrief{{Message: "test"}},
+		Diff: diffview.Diff{
+			Files: []diffview.FileDiff{
+				{
+					NewPath: "story.go",
+					Hunks:   make([]diffview.Hunk, 3), // Only 0-2 valid
+				},
+			},
+		},
+	}
+
+	_, err = classifier.Classify(context.Background(), input)
+
+	require.Error(t, err)
+	assert.Equal(t, 2, callCount, "should try maxValidationRetries times")
+	assert.Contains(t, err.Error(), "validation")
+}
+
+func TestClassifier_Classify_ValidatesWithoutRetryWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	// Return invalid classification, but no retry configured
+	invalidClassification := diffview.StoryClassification{
+		ChangeType: "feature",
+		Narrative:  "core-periphery",
+		Summary:    "Add feature",
+		Sections: []diffview.Section{
+			{
+				Role:        "core",
+				Title:       "Main",
+				Explanation: "test",
+				Hunks: []diffview.HunkRef{
+					{File: "story.go", HunkIndex: 99, Category: "core", Collapsed: false},
+				},
+			},
+		},
+	}
+	responseJSON, err := json.Marshal(invalidClassification)
+	require.NoError(t, err)
+
+	callCount := 0
+	mockClient := &gemini.MockGenerativeClient{
+		GenerateContentFn: func(ctx context.Context, model string, contents []*gemini.Content, config *gemini.GenerateContentConfig) (*gemini.GenerateContentResponse, error) {
+			callCount++
+			return &gemini.GenerateContentResponse{Text: string(responseJSON)}, nil
+		},
+	}
+
+	// No WithValidationRetry - should not validate/retry
+	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel)
+
+	input := diffview.ClassificationInput{
+		Commits: []diffview.CommitBrief{{Message: "test"}},
+		Diff: diffview.Diff{
+			Files: []diffview.FileDiff{
+				{
+					NewPath: "story.go",
+					Hunks:   make([]diffview.Hunk, 3),
+				},
+			},
+		},
+	}
+
+	result, err := classifier.Classify(context.Background(), input)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, callCount, "should only call once with no validation retry")
+	assert.Equal(t, 99, result.Sections[0].Hunks[0].HunkIndex, "should return invalid result as-is")
+}

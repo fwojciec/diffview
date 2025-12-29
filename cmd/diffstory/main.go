@@ -207,7 +207,8 @@ func run() error {
 	}
 	defer client.Close()
 
-	geminiClassifier := gemini.NewClassifier(client, gemini.DefaultModel)
+	geminiClassifier := gemini.NewClassifier(client, gemini.DefaultModel,
+		gemini.WithValidationRetry(2)) // Retry once if LLM returns invalid hunk references
 	classifier := fs.NewClassifier(geminiClassifier, fs.DefaultCacheDir())
 
 	app := &App{

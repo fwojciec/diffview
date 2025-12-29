@@ -581,7 +581,8 @@ func runClassify(ctx context.Context) error {
 	}
 	defer client.Close()
 
-	classifier := gemini.NewClassifier(client, gemini.DefaultModel)
+	classifier := gemini.NewClassifier(client, gemini.DefaultModel,
+		gemini.WithValidationRetry(2)) // Retry once if LLM returns invalid hunk references
 
 	runner := &ClassifyRunner{
 		Output:     os.Stdout,
