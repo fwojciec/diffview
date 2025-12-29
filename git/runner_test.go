@@ -355,4 +355,25 @@ func TestRunner_DefaultBranch(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no remote")
 	})
+
+	t.Run("returns error when remote exists but origin/HEAD not set", func(t *testing.T) {
+		t.Parallel()
+		// Create a "remote" repo
+		remoteDir := t.TempDir()
+		runGit(t, remoteDir, "init", "-b", "main", "--bare")
+
+		// Create local repo, add remote, push, but DON'T set origin/HEAD
+		dir := setupTestRepo(t)
+		runGit(t, dir, "remote", "add", "origin", remoteDir)
+		runGit(t, dir, "push", "-u", "origin", "main")
+		// Note: NOT calling "git remote set-head origin main"
+
+		runner := git.NewRunner()
+		ctx := context.Background()
+
+		_, err := runner.DefaultBranch(ctx, dir)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "origin/HEAD not set")
+	})
 }
