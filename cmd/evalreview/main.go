@@ -73,6 +73,16 @@ With a .jsonl file: opens the review UI`)
 	}
 }
 
+// curatedPath returns the path for saving curated cases given an input path.
+// foo.jsonl -> foo-curated.jsonl
+func curatedPath(inputPath string) string {
+	dir := filepath.Dir(inputPath)
+	base := filepath.Base(inputPath)
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+	return filepath.Join(dir, name+"-curated"+ext)
+}
+
 func runReview(ctx context.Context, inputPath string) error {
 	// Load cases
 	loader := jsonl.NewLoader()
@@ -109,6 +119,7 @@ func runReview(ctx context.Context, inputPath string) error {
 		bubbletea.WithEvalTokenizer(tokenizer),
 		bubbletea.WithEvalWordDiffer(worddiff.NewDiffer()),
 		bubbletea.WithClipboard(clipboard.NewPBCopy()),
+		bubbletea.WithCaseSaver(jsonl.NewSaver(), curatedPath(inputPath)),
 	}
 	if len(existingJudgments) > 0 {
 		opts = append(opts, bubbletea.WithExistingJudgments(existingJudgments))

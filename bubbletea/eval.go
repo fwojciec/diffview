@@ -64,6 +64,10 @@ type EvalModel struct {
 	// Clipboard
 	clipboard diffview.Clipboard
 
+	// Case saving
+	caseSaver     diffview.EvalCaseSaver
+	caseSaverPath string
+
 	// Keybindings
 	keymap EvalKeyMap
 }
@@ -121,6 +125,14 @@ func WithEvalWordDiffer(d diffview.WordDiffer) EvalModelOption {
 func WithClipboard(c diffview.Clipboard) EvalModelOption {
 	return func(m *EvalModel) {
 		m.clipboard = c
+	}
+}
+
+// WithCaseSaver sets the saver for exporting cases to an eval dataset.
+func WithCaseSaver(s diffview.EvalCaseSaver, path string) EvalModelOption {
+	return func(m *EvalModel) {
+		m.caseSaver = s
+		m.caseSaverPath = path
 	}
 }
 
@@ -276,6 +288,10 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keymap.CopyCase):
 		m.copyCurrentCase()
+		return m, nil
+
+	case key.Matches(msg, m.keymap.SaveCase):
+		m.saveCurrentCase()
 		return m, nil
 
 	case key.Matches(msg, m.keymap.Help):
@@ -533,6 +549,16 @@ func (m *EvalModel) copyCurrentCase() {
 	_ = m.clipboard.Copy(content)
 }
 
+func (m *EvalModel) saveCurrentCase() {
+	if m.caseSaver == nil || m.caseSaverPath == "" || len(m.cases) == 0 {
+		return
+	}
+
+	c := m.cases[m.currentIndex]
+	// Best-effort save - errors are silently ignored in UI
+	_ = m.caseSaver.Save(m.caseSaverPath, c)
+}
+
 // formatCaseForExport formats an EvalCase as markdown for LLM-assisted review.
 func formatCaseForExport(c diffview.EvalCase) string {
 	var sb strings.Builder
@@ -733,6 +759,7 @@ func (m EvalModel) renderHelpView() string {
 	s.WriteString(headerStyle.Render("Other"))
 	s.WriteString("\n")
 	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("y"), descStyle.Render("copy case to clipboard")))
+	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("e"), descStyle.Render("save case to eval dataset")))
 	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("?"), descStyle.Render("toggle help")))
 	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("q"), descStyle.Render("quit")))
 	s.WriteString("\n\n")

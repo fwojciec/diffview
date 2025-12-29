@@ -31,6 +31,11 @@ type StoryModel struct {
 	tokenizer        diffview.Tokenizer
 	wordDiffer       diffview.WordDiffer
 
+	// Case saving
+	input         *diffview.ClassificationInput // optional: full input for constructing EvalCase
+	caseSaver     diffview.EvalCaseSaver
+	caseSaverPath string
+
 	// UI state
 	viewport   viewport.Model
 	keymap     StoryKeyMap
@@ -52,6 +57,9 @@ type storyModelConfig struct {
 	tokenizer        diffview.Tokenizer
 	wordDiffer       diffview.WordDiffer
 	showIntro        bool
+	input            *diffview.ClassificationInput
+	caseSaver        diffview.EvalCaseSaver
+	caseSaverPath    string
 }
 
 // WithStoryRenderer sets a custom lipgloss renderer for the model.
@@ -94,6 +102,21 @@ func WithStoryWordDiffer(d diffview.WordDiffer) StoryModelOption {
 func WithIntroSlide() StoryModelOption {
 	return func(cfg *storyModelConfig) {
 		cfg.showIntro = true
+	}
+}
+
+// WithStoryInput sets the classification input for constructing EvalCase when saving.
+func WithStoryInput(input diffview.ClassificationInput) StoryModelOption {
+	return func(cfg *storyModelConfig) {
+		cfg.input = &input
+	}
+}
+
+// WithStoryCaseSaver sets the saver for exporting cases to an eval dataset.
+func WithStoryCaseSaver(s diffview.EvalCaseSaver, path string) StoryModelOption {
+	return func(cfg *storyModelConfig) {
+		cfg.caseSaver = s
+		cfg.caseSaverPath = path
 	}
 }
 
@@ -148,6 +171,9 @@ func NewStoryModel(diff *diffview.Diff, story *diffview.StoryClassification, opt
 		languageDetector: cfg.languageDetector,
 		tokenizer:        cfg.tokenizer,
 		wordDiffer:       cfg.wordDiffer,
+		input:            cfg.input,
+		caseSaver:        cfg.caseSaver,
+		caseSaverPath:    cfg.caseSaverPath,
 		keymap:           DefaultStoryKeyMap(),
 		styles:           styles,
 		palette:          palette,
@@ -209,6 +235,9 @@ func (m StoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case key.Matches(msg, m.keymap.ToggleCollapseAll):
 			m.toggleAllCollapse()
+			return m, nil
+		case key.Matches(msg, m.keymap.SaveCase):
+			m.saveCurrentCase()
 			return m, nil
 		}
 	case tea.WindowSizeMsg:
@@ -534,6 +563,19 @@ func (m *StoryModel) gotoPrevSection() {
 	}
 }
 
+func (m *StoryModel) saveCurrentCase() {
+	if m.caseSaver == nil || m.caseSaverPath == "" || m.input == nil || m.story == nil {
+		return
+	}
+
+	evalCase := diffview.EvalCase{
+		Input: *m.input,
+		Story: m.story,
+	}
+	// Best-effort save - errors are silently ignored in UI
+	_ = m.caseSaver.Save(m.caseSaverPath, evalCase)
+}
+
 // newStyle creates a new lipgloss style using the model's renderer.
 func (m StoryModel) newStyle() lipgloss.Style {
 	if m.renderer != nil {
@@ -582,7 +624,7 @@ func (m StoryModel) statusBarView() string {
 	}
 
 	content += barStyle.Render(scrollPos) + sep +
-		dimStyle.Render("j/k:scroll  s/S:section  o:collapse  z:all  q:quit") +
+		dimStyle.Render("j/k:scroll  s/S:section  o:collapse  z:all  e:save  q:quit") +
 		barStyle.Render("  ")
 
 	// Right-align by padding left side with background

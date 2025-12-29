@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/fwojciec/diffview/gemini"
 	"github.com/fwojciec/diffview/git"
 	"github.com/fwojciec/diffview/gitdiff"
+	"github.com/fwojciec/diffview/jsonl"
 	"github.com/fwojciec/diffview/lipgloss"
 	"github.com/fwojciec/diffview/worddiff"
 )
@@ -208,6 +210,17 @@ func run() error {
 		return err
 	}
 
+	// Get commits for ClassificationInput
+	commits, _ := gitRunner.CommitsInRange(ctx, cwd, baseBranch, "HEAD")
+
+	// Build ClassificationInput for case saving
+	classInput := diffview.ClassificationInput{
+		Repo:    filepath.Base(cwd),
+		Branch:  currentBranch,
+		Commits: commits,
+		Diff:    *diff,
+	}
+
 	// Set up syntax highlighting
 	theme := lipgloss.DefaultTheme()
 	detector := chroma.NewDetector()
@@ -216,6 +229,9 @@ func run() error {
 		return fmt.Errorf("failed to set up syntax highlighting: %w", err)
 	}
 
+	// Curated cases go to a fixed location in cwd
+	curatedPath := filepath.Join(cwd, "eval-curated.jsonl")
+
 	// Launch StoryModel TUI
 	m := bubbletea.NewStoryModel(diff, classification,
 		bubbletea.WithStoryTheme(theme),
@@ -223,6 +239,8 @@ func run() error {
 		bubbletea.WithStoryTokenizer(tokenizer),
 		bubbletea.WithStoryWordDiffer(worddiff.NewDiffer()),
 		bubbletea.WithIntroSlide(),
+		bubbletea.WithStoryInput(classInput),
+		bubbletea.WithStoryCaseSaver(jsonl.NewSaver(), curatedPath),
 	)
 	p := tea.NewProgram(m,
 		tea.WithAltScreen(),

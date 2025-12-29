@@ -26,6 +26,9 @@ type StoryKeyMap struct {
 	// Hunk collapsing (story-specific)
 	ToggleCollapse    key.Binding
 	ToggleCollapseAll key.Binding
+
+	// Export
+	SaveCase key.Binding
 }
 
 // DefaultStoryKeyMap returns the default key bindings for story mode.
@@ -90,6 +93,10 @@ func DefaultStoryKeyMap() StoryKeyMap {
 		ToggleCollapseAll: key.NewBinding(
 			key.WithKeys("z"),
 			key.WithHelp("z", "toggle all collapsed"),
+		),
+		SaveCase: key.NewBinding(
+			key.WithKeys("e"),
+			key.WithHelp("e", "save case to eval dataset"),
 		),
 	}
 }

@@ -3,6 +3,7 @@ package bubbletea_test
 import (
 	"bytes"
 	"io"
+	"sync"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -898,4 +899,119 @@ func TestStoryModel_ExpandedHunksGetFullStyling(t *testing.T) {
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestStoryModel_SaveCaseToEvalDataset(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "main.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "package main"},
+							{Type: diffview.LineAdded, Content: "// new comment"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	story := &diffview.StoryClassification{
+		ChangeType: "feature",
+		Summary:    "Added a comment",
+		Sections: []diffview.Section{
+			{Role: "core", Title: "Main Changes", Hunks: []diffview.HunkRef{{File: "main.go", HunkIndex: 0}}},
+		},
+	}
+
+	input := diffview.ClassificationInput{
+		Repo:   "test-repo",
+		Branch: "feature-branch",
+		Commits: []diffview.CommitBrief{
+			{Hash: "abc123", Message: "Add comment"},
+		},
+		Diff: *diff,
+	}
+
+	// Create mock saver
+	mockSaver := &storyCaseSaver{}
+	m := bubbletea.NewStoryModel(diff, story,
+		bubbletea.WithStoryInput(input),
+		bubbletea.WithStoryCaseSaver(mockSaver, "/tmp/curated.jsonl"),
+	)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Wait for model to be ready
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("main.go"))
+	})
+
+	// Press 'e' to save case
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	// Wait for save to happen
+	teatest.WaitFor(t, tm.Output(), func(_ []byte) bool {
+		return mockSaver.Saved()
+	})
+
+	// Verify the saved case
+	savedCase := mockSaver.SavedCase()
+	if savedCase == nil {
+		t.Fatal("expected case to be saved")
+	}
+	if savedCase.Input.Repo != "test-repo" {
+		t.Errorf("expected repo 'test-repo', got %q", savedCase.Input.Repo)
+	}
+	if savedCase.Story.ChangeType != "feature" {
+		t.Errorf("expected change type 'feature', got %q", savedCase.Story.ChangeType)
+	}
+	if mockSaver.SavedPath() != "/tmp/curated.jsonl" {
+		t.Errorf("expected path '/tmp/curated.jsonl', got %q", mockSaver.SavedPath())
+	}
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+// storyCaseSaver is a mock for testing case saving in StoryModel.
+type storyCaseSaver struct {
+	mu        sync.Mutex
+	saved     bool
+	savedCase *diffview.EvalCase
+	savedPath string
+}
+
+func (s *storyCaseSaver) Save(path string, c diffview.EvalCase) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.saved = true
+	s.savedCase = &c
+	s.savedPath = path
+	return nil
+}
+
+func (s *storyCaseSaver) Saved() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saved
+}
+
+func (s *storyCaseSaver) SavedCase() *diffview.EvalCase {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.savedCase
+}
+
+func (s *storyCaseSaver) SavedPath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.savedPath
 }

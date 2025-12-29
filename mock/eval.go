@@ -12,6 +12,7 @@ var (
 	_ diffview.JudgmentStore  = (*JudgmentStore)(nil)
 	_ diffview.RubricJudge    = (*RubricJudge)(nil)
 	_ diffview.Clipboard      = (*Clipboard)(nil)
+	_ diffview.EvalCaseSaver  = (*EvalCaseSaver)(nil)
 )
 
 // EvalCaseLoader is a mock implementation of diffview.EvalCaseLoader.
@@ -53,4 +54,13 @@ type Clipboard struct {
 
 func (c *Clipboard) Copy(content string) error {
 	return c.CopyFn(content)
+}
+
+// EvalCaseSaver is a mock implementation of diffview.EvalCaseSaver.
+type EvalCaseSaver struct {
+	SaveFn func(path string, c diffview.EvalCase) error
+}
+
+func (s *EvalCaseSaver) Save(path string, c diffview.EvalCase) error {
+	return s.SaveFn(path, c)
 }

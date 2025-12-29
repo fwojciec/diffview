@@ -33,3 +33,8 @@ type JudgmentStore interface {
 type Clipboard interface {
 	Copy(content string) error
 }
+
+// EvalCaseSaver appends eval cases to a file.
+type EvalCaseSaver interface {
+	Save(path string, c EvalCase) error
+}
