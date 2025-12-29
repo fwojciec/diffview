@@ -11,10 +11,12 @@ type CommitBrief struct {
 // ClassificationInput is the complete input for story classification.
 // It represents a PR's worth of changes: multiple commits with their combined diff.
 type ClassificationInput struct {
-	Repo    string        `json:"repo"`
-	Branch  string        `json:"branch"`
-	Commits []CommitBrief `json:"commits"`
-	Diff    Diff          `json:"diff"`
+	Repo          string        `json:"repo"`
+	Branch        string        `json:"branch"`
+	PRTitle       string        `json:"pr_title,omitempty"`
+	PRDescription string        `json:"pr_description,omitempty"`
+	Commits       []CommitBrief `json:"commits"`
+	Diff          Diff          `json:"diff"`
 }
 
 // FirstCommitMessage returns the message of the first commit, or empty if none.

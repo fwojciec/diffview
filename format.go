@@ -23,6 +23,12 @@ func (f *DefaultFormatter) Format(input ClassificationInput) string {
 	if input.Branch != "" {
 		sb.WriteString(fmt.Sprintf("Branch: %s\n", input.Branch))
 	}
+	if input.PRTitle != "" {
+		sb.WriteString(fmt.Sprintf("PR Title: %s\n", input.PRTitle))
+	}
+	if input.PRDescription != "" {
+		sb.WriteString(fmt.Sprintf("PR Description:\n%s\n", input.PRDescription))
+	}
 	if len(input.Commits) > 0 {
 		sb.WriteString("\nCommits:\n")
 		for _, c := range input.Commits {

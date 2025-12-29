@@ -293,3 +293,71 @@ func TestDefaultFormatter_Format_ContextSection_EmptyCommits(t *testing.T) {
 	// Should NOT have Commits section
 	assert.NotContains(t, result, "Commits:")
 }
+
+func TestDefaultFormatter_Format_ContextSection_WithPRMetadata(t *testing.T) {
+	t.Parallel()
+
+	input := diffview.ClassificationInput{
+		Repo:          "diffview",
+		Branch:        "feature-branch",
+		PRTitle:       "Add dark mode support",
+		PRDescription: "This PR adds dark mode toggle to the settings page.\n\nCloses #123",
+		Commits: []diffview.CommitBrief{
+			{Hash: "abc123", Message: "Add dark mode toggle"},
+		},
+		Diff: diffview.Diff{
+			Files: []diffview.FileDiff{
+				{
+					NewPath:   "main.go",
+					Operation: diffview.FileModified,
+					Hunks: []diffview.Hunk{
+						{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "// test\n"}}},
+					},
+				},
+			},
+		},
+	}
+
+	formatter := &diffview.DefaultFormatter{}
+	result := formatter.Format(input)
+
+	// Should have context section with PR metadata
+	assert.Contains(t, result, "<context>")
+	assert.Contains(t, result, "PR Title: Add dark mode support")
+	assert.Contains(t, result, "PR Description:")
+	assert.Contains(t, result, "This PR adds dark mode toggle to the settings page.")
+	assert.Contains(t, result, "Closes #123")
+	assert.Contains(t, result, "</context>")
+}
+
+func TestDefaultFormatter_Format_ContextSection_PRTitleOnly(t *testing.T) {
+	t.Parallel()
+
+	input := diffview.ClassificationInput{
+		Repo:    "diffview",
+		Branch:  "feature-branch",
+		PRTitle: "Quick fix for login",
+		// No description
+		Commits: []diffview.CommitBrief{
+			{Hash: "abc123", Message: "Fix login"},
+		},
+		Diff: diffview.Diff{
+			Files: []diffview.FileDiff{
+				{
+					NewPath:   "main.go",
+					Operation: diffview.FileModified,
+					Hunks: []diffview.Hunk{
+						{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "// test\n"}}},
+					},
+				},
+			},
+		},
+	}
+
+	formatter := &diffview.DefaultFormatter{}
+	result := formatter.Format(input)
+
+	// Should have PR title but not description label
+	assert.Contains(t, result, "PR Title: Quick fix for login")
+	assert.NotContains(t, result, "PR Description:")
+}

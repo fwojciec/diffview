@@ -205,6 +205,8 @@ Your role is to:
 3. Organize hunks into logical sections that tell a coherent story
 4. Categorize each hunk by its role in the change
 
+When PR title and description are provided, use them to understand the author's intent. The PR description often explains why the change was made and what problem it solves.
+
 Be precise and consistent. Focus on helping a reviewer quickly understand the change.`,
 			}},
 		},
