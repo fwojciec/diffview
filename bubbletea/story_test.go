@@ -178,12 +178,11 @@ func TestStoryModel_SectionNavigation(t *testing.T) {
 func TestStoryModel_NoToggleCollapseKey(t *testing.T) {
 	t.Parallel()
 
-	// Verify that the StoryKeyMap no longer has a ToggleCollapse field
-	// This is a compile-time check - if ToggleCollapse still exists, this won't compile
+	// Verify ToggleCollapseAll is bound to 'z'.
+	// Note: The 'o' keybinding (ToggleCollapse) was removed from the struct,
+	// which is enforced at compile time - any code referencing the field won't compile.
 	keymap := bubbletea.DefaultStoryKeyMap()
 
-	// The 'o' key should not be bound (no ToggleCollapse in the struct)
-	// We verify this by checking that 'z' is the only collapse-related key
 	if keymap.ToggleCollapseAll.Help().Key != "z" {
 		t.Errorf("expected ToggleCollapseAll to be bound to 'z', got %q", keymap.ToggleCollapseAll.Help().Key)
 	}
