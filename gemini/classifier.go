@@ -123,9 +123,6 @@ func (c *Classifier) Classify(ctx context.Context, input diffview.Classification
 		return nil, fmt.Errorf("gemini: failed to parse response: %w", err)
 	}
 
-	// Deterministically reorder sections based on narrative type
-	classification.OrderSections()
-
 	return &classification, nil
 }
 
@@ -200,21 +197,29 @@ Determine the **change_type** (bugfix, feature, refactor, chore, docs) and selec
    - Confrontation: supporting updates (supporting)
    - Resolution: tests and cleanup
 
-## Section Ordering Principles
+## Section Ordering: Two-Pass Process
 
-Order sections to tell a coherent story. The array order determines reading order:
+The array order in your output determines reading order. Follow this two-pass approach:
 
-1. **Context before detail**: Show "why" before "what" (exposition before action)
-2. **High-impact first**: Core changes before peripheral ones
-3. **Tests as validation**: Tests belong near the end as proof (resolution/denouement)
-4. **Collapsed sections last**: Sections with all collapsed hunks should appear at the end
-
-Standard orderings by narrative:
+### Pass 1: Narrative-Driven Ordering
+Start with the standard ordering for your chosen narrative:
 - cause-effect: problem → fix → test → supporting → cleanup
 - core-periphery: core → supporting → test → cleanup
 - before-after: cleanup (old pattern) → core (new pattern) → supporting → test
 - rule-instances: pattern → core → test → supporting → cleanup
 - entry-implementation: interface → core → test → supporting → cleanup
+
+Principles for this ordering:
+1. **Context before detail**: Show "why" before "what" (exposition before action)
+2. **High-impact first**: Core changes before peripheral ones
+3. **Tests as validation**: Tests belong near the end as proof (resolution/denouement)
+
+### Pass 2: Sink Fully-Collapsed Sections
+After establishing narrative order, identify sections where EVERY hunk is collapsed=true. These are "empty slides" in the story - they contain no visible content for the reviewer.
+
+**Move fully-collapsed sections to the very end**, preserving their relative order. This prevents "empty slides" from interrupting the narrative flow.
+
+Example: If your narrative order produces [problem, fix, cleanup, test] but "cleanup" has all hunks collapsed, the final order should be [problem, fix, test, cleanup].
 
 ## Classifying Hunks
 
