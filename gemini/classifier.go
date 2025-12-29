@@ -164,7 +164,7 @@ Classify this change and organize the hunks into a coherent narrative structure.
 
 For each hunk, determine:
 - **category**: refactoring (restructure without behavior change), systematic (mechanical changes like renames), core (essential logic change), noise (formatting, whitespace)
-- **collapsed**: whether it can be collapsed in a diff viewer (true for noise, often true for systematic)
+- **collapsed**: whether it can be collapsed in a diff viewer (true for noise, often true for systematic; never collapse tests - they verify intent and are essential for review)
 
 For the overall change, determine:
 - **change_type**: bugfix, feature, refactor, chore, docs
@@ -179,9 +179,9 @@ Group hunks into sections with meaningful roles that tell the story of the chang
 
 **Order sections to tell a coherent story.** The array order determines the reading order:
 - cause-effect: problem → fix → test → supporting → cleanup
-- core-periphery: core → supporting → cleanup
+- core-periphery: core → supporting → test → cleanup
 - before-after: cleanup (old pattern) → core (new pattern) → test → supporting
-- rule-instances: pattern → core → supporting → cleanup
+- rule-instances: pattern → core → test → supporting → cleanup
 - entry-implementation: interface → core → test → supporting → cleanup
 
 Rules:

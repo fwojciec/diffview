@@ -29,13 +29,14 @@ func TestOrderSections(t *testing.T) {
 		assert.Equal(t, []string{"problem", "fix", "test", "supporting"}, roles)
 	})
 
-	t.Run("core-periphery orders core before supporting before cleanup", func(t *testing.T) {
+	t.Run("core-periphery orders core before supporting before test before cleanup", func(t *testing.T) {
 		t.Parallel()
 
 		classification := &diffview.StoryClassification{
 			Narrative: "core-periphery",
 			Sections: []diffview.Section{
 				{Role: "cleanup", Title: "Remove old code"},
+				{Role: "test", Title: "Verify changes"},
 				{Role: "supporting", Title: "Update callers"},
 				{Role: "core", Title: "Main change"},
 			},
@@ -44,7 +45,7 @@ func TestOrderSections(t *testing.T) {
 		classification.OrderSections()
 
 		roles := extractRoles(classification.Sections)
-		assert.Equal(t, []string{"core", "supporting", "cleanup"}, roles)
+		assert.Equal(t, []string{"core", "supporting", "test", "cleanup"}, roles)
 	})
 
 	t.Run("before-after orders cleanup before core before test before supporting", func(t *testing.T) {
@@ -68,13 +69,15 @@ func TestOrderSections(t *testing.T) {
 		assert.Equal(t, []string{"cleanup", "core", "test", "supporting"}, roles)
 	})
 
-	t.Run("rule-instances orders pattern before core before supporting", func(t *testing.T) {
+	t.Run("rule-instances orders pattern before core before test before supporting before cleanup", func(t *testing.T) {
 		t.Parallel()
 
 		classification := &diffview.StoryClassification{
 			Narrative: "rule-instances",
 			Sections: []diffview.Section{
+				{Role: "cleanup", Title: "Remove old approach"},
 				{Role: "supporting", Title: "Helpers"},
+				{Role: "test", Title: "Verify pattern"},
 				{Role: "core", Title: "Apply pattern"},
 				{Role: "pattern", Title: "Define pattern"},
 			},
@@ -83,7 +86,7 @@ func TestOrderSections(t *testing.T) {
 		classification.OrderSections()
 
 		roles := extractRoles(classification.Sections)
-		assert.Equal(t, []string{"pattern", "core", "supporting"}, roles)
+		assert.Equal(t, []string{"pattern", "core", "test", "supporting", "cleanup"}, roles)
 	})
 
 	t.Run("entry-implementation orders interface before core before test before supporting", func(t *testing.T) {

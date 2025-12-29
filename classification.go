@@ -88,11 +88,11 @@ func narrativeOrder(narrative string) []string {
 	case "cause-effect":
 		return []string{"problem", "fix", "test", "supporting", "cleanup"}
 	case "core-periphery":
-		return []string{"core", "supporting", "cleanup"}
+		return []string{"core", "supporting", "test", "cleanup"}
 	case "before-after":
 		return []string{"cleanup", "core", "test", "supporting"}
 	case "rule-instances":
-		return []string{"pattern", "core", "supporting", "cleanup"}
+		return []string{"pattern", "core", "test", "supporting", "cleanup"}
 	case "entry-implementation":
 		return []string{"interface", "core", "test", "supporting", "cleanup"}
 	default:
