@@ -78,8 +78,9 @@ test-results.json
 # Beads local database (cache, not the JSONL source of truth)
 .beads/beads.db
 
-# Eval intermediate files (keep only final classified dataset)
+# Eval intermediate files and curated dataset (local only)
 eval/cases/*-prs.jsonl
+eval-curated.jsonl
 
 # VHS generated recordings (keep tape files, ignore outputs except walkthrough)
 examples/*.gif

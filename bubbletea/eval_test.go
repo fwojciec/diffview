@@ -935,3 +935,552 @@ func (m *mockCaseSaver) SavedPath() string {
 	defer m.mu.Unlock()
 	return m.savedPath
 }
+
+func TestEvalModel_StoryModeIsDefaultWhenCaseHasStory(t *testing.T) {
+	t.Parallel()
+
+	// Create a case with sections - story mode should be the default
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks: []diffview.Hunk{
+								{
+									Lines: []diffview.Line{
+										{Type: diffview.LineAdded, Content: "added line"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Summary:    "Added new feature",
+				Sections: []diffview.Section{
+					{
+						Role:        "core",
+						Title:       "Main implementation",
+						Explanation: "Core logic for the feature",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 0}},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Story mode should show "story mode" in the status bar
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("story mode"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_ToggleModeWithM(t *testing.T) {
+	t.Parallel()
+
+	// Create a case with sections
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks: []diffview.Hunk{
+								{
+									Lines: []diffview.Line{
+										{Type: diffview.LineAdded, Content: "added line"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Summary:    "Added new feature",
+				Sections: []diffview.Section{
+					{
+						Role:        "core",
+						Title:       "Main implementation",
+						Explanation: "Core logic for the feature",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 0}},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Starts in story mode
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("story mode"))
+	})
+
+	// Press 'm' to toggle to raw mode
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+
+	// Should now show "raw mode"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("raw mode"))
+	})
+
+	// Press 'm' again to toggle back to story mode
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+
+	// Should show "story mode" again
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("story mode"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_StoryModeShowsOnlyCurrentSectionHunks(t *testing.T) {
+	t.Parallel()
+
+	// Create a case with multiple sections, each with different hunks
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "SECTION_ONE_CONTENT"}}},
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "SECTION_TWO_CONTENT"}}},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Summary:    "Multi-section feature",
+				Sections: []diffview.Section{
+					{
+						Role:        "core",
+						Title:       "First section",
+						Explanation: "Core logic",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 0}},
+					},
+					{
+						Role:        "support",
+						Title:       "Second section",
+						Explanation: "Support code",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 1}},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// In story mode, section 1 should show SECTION_ONE_CONTENT but NOT SECTION_TWO_CONTENT
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("SECTION_ONE_CONTENT")) &&
+			!bytes.Contains(out, []byte("SECTION_TWO_CONTENT"))
+	})
+
+	// Navigate to section 2
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	// Now should show SECTION_TWO_CONTENT but NOT SECTION_ONE_CONTENT
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("SECTION_TWO_CONTENT")) &&
+			!bytes.Contains(out, []byte("SECTION_ONE_CONTENT"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_StoryModeShowsSectionHeader(t *testing.T) {
+	t.Parallel()
+
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "code"}}},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Summary:    "Test feature",
+				Sections: []diffview.Section{
+					{
+						Role:        "core",
+						Title:       "Main Implementation",
+						Explanation: "The primary logic for the feature",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 0}},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// In story mode, should show section header with role and title
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("[core]")) &&
+			bytes.Contains(out, []byte("Main Implementation"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_CaseNavigationResetsStoryModeState(t *testing.T) {
+	t.Parallel()
+
+	// Create two cases with different sections
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "case1",
+				Commits: []diffview.CommitBrief{{Hash: "case1"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "case1h1"}}},
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "case1h2"}}},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Summary:    "Case 1",
+				Sections: []diffview.Section{
+					{Role: "core", Title: "Case1-S1", Hunks: []diffview.HunkRef{{File: "main.go", HunkIndex: 0}}},
+					{Role: "support", Title: "Case1-S2", Hunks: []diffview.HunkRef{{File: "main.go", HunkIndex: 1}}},
+				},
+			},
+		},
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "case2",
+				Commits: []diffview.CommitBrief{{Hash: "case2"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "other.go",
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "case2h1"}}},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "refactor",
+				Summary:    "Case 2",
+				Sections: []diffview.Section{
+					{Role: "noise", Title: "Case2-S1", Hunks: []diffview.HunkRef{{File: "other.go", HunkIndex: 0}}},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// At case 1, navigate to section 2
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 1/2"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 2/2"))
+	})
+
+	// Navigate to case 2 - should reset to section 1/1
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 1/1")) &&
+			bytes.Contains(out, []byte("Case2-S1"))
+	})
+
+	// Navigate back to case 1 - should reset to section 1/2 (not stay at 2/2)
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 1/2")) &&
+			bytes.Contains(out, []byte("Case1-S1"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_ToggleCollapsedHunksWithZ(t *testing.T) {
+	t.Parallel()
+
+	// Create a case with a collapsed hunk (noise category)
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "COLLAPSED_CONTENT"}}},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Summary:    "Test feature",
+				Sections: []diffview.Section{
+					{
+						Role:  "noise",
+						Title: "Noise section",
+						Hunks: []diffview.HunkRef{{File: "main.go", HunkIndex: 0, Category: "noise", Collapsed: true, CollapseText: "collapsed noise hunk"}},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Initially collapsed - should show collapse text, not full content
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("collapsed noise hunk"))
+	})
+
+	// Press 'z' to toggle - should now show full content
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("COLLAPSED_CONTENT"))
+	})
+
+	// Press 'z' again to collapse back
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("collapsed noise hunk"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_SectionProgressIndicator(t *testing.T) {
+	t.Parallel()
+
+	// Create a case with 3 sections
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "h1"}}},
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "h2"}}},
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "h3"}}},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Summary:    "Test",
+				Sections: []diffview.Section{
+					{Role: "core", Title: "S1", Hunks: []diffview.HunkRef{{File: "main.go", HunkIndex: 0}}},
+					{Role: "support", Title: "S2", Hunks: []diffview.HunkRef{{File: "main.go", HunkIndex: 1}}},
+					{Role: "noise", Title: "S3", Hunks: []diffview.HunkRef{{File: "main.go", HunkIndex: 2}}},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// At section 1, should show progress: current section 1, none reviewed
+	// Expect: ● ○ ○ (current is filled, pending are empty)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("● ○ ○"))
+	})
+
+	// Navigate to section 2 - section 1 becomes reviewed
+	// Expect: ✓ ● ○ (reviewed is check, current is filled)
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("✓ ● ○"))
+	})
+
+	// Navigate to section 3
+	// Expect: ✓ ✓ ●
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("✓ ✓ ●"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_SectionNavigationWithS(t *testing.T) {
+	t.Parallel()
+
+	// Create a case with multiple sections
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "hunk 1"}}},
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "hunk 2"}}},
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "hunk 3"}}},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Summary:    "Multi-section feature",
+				Sections: []diffview.Section{
+					{
+						Role:        "core",
+						Title:       "First section",
+						Explanation: "Core logic",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 0}},
+					},
+					{
+						Role:        "support",
+						Title:       "Second section",
+						Explanation: "Support code",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 1}},
+					},
+					{
+						Role:        "noise",
+						Title:       "Third section",
+						Explanation: "Minor changes",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 2}},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Starts in story mode at section 1
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 1/3"))
+	})
+
+	// Press 's' to go to next section
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	// Should show section 2/3
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 2/3"))
+	})
+
+	// Press 's' again to go to section 3
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 3/3"))
+	})
+
+	// Press 'S' to go back to section 2
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 2/3"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
