@@ -35,6 +35,7 @@ type EvalKeyMap struct {
 
 	// Export
 	CopyCase key.Binding
+	SaveCase key.Binding
 
 	// General
 	Quit key.Binding
@@ -115,6 +116,10 @@ func DefaultEvalKeyMap() EvalKeyMap {
 		CopyCase: key.NewBinding(
 			key.WithKeys("y"),
 			key.WithHelp("y", "copy case to clipboard"),
+		),
+		SaveCase: key.NewBinding(
+			key.WithKeys("e"),
+			key.WithHelp("e", "save case to eval dataset"),
 		),
 		Quit: key.NewBinding(
 			key.WithKeys("q", "ctrl+c"),

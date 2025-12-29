@@ -855,3 +855,83 @@ func TestEvalModel_HelpOverlayShowsOnQuestionMark(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestEvalModel_SaveCaseToEvalDataset(t *testing.T) {
+	t.Parallel()
+
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "feature-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123", Message: "Add feature"}},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Summary:    "Added a new feature",
+			},
+		},
+	}
+
+	// Create a mock saver to capture the saved case
+	mockSaver := &mockCaseSaver{}
+	m := bubbletea.NewEvalModel(cases,
+		bubbletea.WithCaseSaver(mockSaver, "/tmp/eval-cases.jsonl"),
+	)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Wait for model to be ready
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Added a new feature"))
+	})
+
+	// Press 'e' to save case to eval dataset
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	// Wait for the save to happen
+	teatest.WaitFor(t, tm.Output(), func(_ []byte) bool {
+		return mockSaver.SavedCase() != nil
+	})
+
+	// Verify the saved case
+	saved := mockSaver.SavedCase()
+	assert.NotNil(t, saved)
+	assert.Equal(t, "test-repo", saved.Input.Repo)
+	assert.Equal(t, "feature-branch", saved.Input.Branch)
+	assert.Equal(t, "feature", saved.Story.ChangeType)
+
+	// Verify the path was passed correctly
+	assert.Equal(t, "/tmp/eval-cases.jsonl", mockSaver.SavedPath())
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+// mockCaseSaver captures saved cases for testing.
+type mockCaseSaver struct {
+	mu        sync.Mutex
+	savedCase *diffview.EvalCase
+	savedPath string
+}
+
+func (m *mockCaseSaver) Save(path string, c diffview.EvalCase) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.savedCase = &c
+	m.savedPath = path
+	return nil
+}
+
+func (m *mockCaseSaver) SavedCase() *diffview.EvalCase {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.savedCase
+}
+
+func (m *mockCaseSaver) SavedPath() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.savedPath
+}
