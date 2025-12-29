@@ -1484,3 +1484,112 @@ func TestEvalModel_SectionNavigationWithS(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestEvalModel_FilteredDiffUsesOriginalHunkIndices(t *testing.T) {
+	t.Parallel()
+
+	// Bug: When a section references non-first hunks from a file, collapsed state,
+	// categories, and collapse text are incorrectly looked up because render uses
+	// filtered slice indices instead of original hunk indices.
+	//
+	// This test creates:
+	// - A file with 2 hunks (indices 0 and 1)
+	// - Section 1 references only hunk 1 (not hunk 0)
+	// - Section 2 references hunk 0
+	// - Hunk 0 has category "systematic" and collapse text "Hunk zero text"
+	// - Hunk 1 has category "core" and collapse text "Hunk one text"
+	//
+	// The bug: When rendering section 1, the filtered diff only contains hunk 1,
+	// but at position 0 in the filtered slice. The render code uses the position (0)
+	// to lookup the category/collapse text, getting hunk 0's data instead of hunk 1's.
+
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "file.go",
+							Hunks: []diffview.Hunk{
+								{
+									// Hunk 0: NOT in section 1
+									OldStart: 1, OldCount: 2, NewStart: 1, NewCount: 2,
+									Lines: []diffview.Line{
+										{Type: diffview.LineContext, Content: "HUNK_ZERO_CONTENT"},
+										{Type: diffview.LineContext, Content: "more hunk zero"},
+									},
+								},
+								{
+									// Hunk 1: IS in section 1
+									OldStart: 100, OldCount: 2, NewStart: 100, NewCount: 2,
+									Lines: []diffview.Line{
+										{Type: diffview.LineContext, Content: "HUNK_ONE_CONTENT"},
+										{Type: diffview.LineContext, Content: "more hunk one"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Summary:    "Test filtered indices",
+				Sections: []diffview.Section{
+					{
+						// Section 1 references hunk 1 only
+						Role:        "core",
+						Title:       "Core Changes",
+						Explanation: "Main changes",
+						Hunks: []diffview.HunkRef{
+							{
+								File:         "file.go",
+								HunkIndex:    1, // Original index is 1
+								Category:     "core",
+								Collapsed:    true,
+								CollapseText: "Hunk one text", // Should show this
+							},
+						},
+					},
+					{
+						// Section 2 references hunk 0
+						Role:        "supporting",
+						Title:       "Supporting",
+						Explanation: "Support changes",
+						Hunks: []diffview.HunkRef{
+							{
+								File:         "file.go",
+								HunkIndex:    0,
+								Category:     "systematic",
+								Collapsed:    true,
+								CollapseText: "Hunk zero text", // Bug would incorrectly show this in section 1
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// On section 1, we should see:
+	// - "Hunk one text" (the collapse text for hunk 1)
+	// - NOT "Hunk zero text" (that's for hunk 0, which isn't in this section)
+	// - NOT "HUNK_ZERO_CONTENT" (hunk 0 content, filtered out)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasCorrectCollapseText := bytes.Contains(out, []byte("Hunk one text"))
+		noWrongCollapseText := !bytes.Contains(out, []byte("Hunk zero text"))
+		noHunkZeroContent := !bytes.Contains(out, []byte("HUNK_ZERO_CONTENT"))
+		return hasCorrectCollapseText && noWrongCollapseText && noHunkZeroContent
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}

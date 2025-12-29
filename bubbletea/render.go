@@ -25,9 +25,10 @@ type renderConfig struct {
 	wordDiffer       diffview.WordDiffer
 
 	// Story-aware rendering options (optional)
-	collapsedHunks map[hunkKey]bool   // Which hunks are collapsed
-	hunkCategories map[hunkKey]string // Category for each hunk (for styling)
-	collapseText   map[hunkKey]string // Summary text for collapsed hunks
+	collapsedHunks  map[hunkKey]bool   // Which hunks are collapsed
+	hunkCategories  map[hunkKey]string // Category for each hunk (for styling)
+	collapseText    map[hunkKey]string // Summary text for collapsed hunks
+	originalIndices map[hunkKey]int    // Maps (file, filtered position) -> original hunk index
 }
 
 // minGutterWidth is the minimum width of each line number column in the gutter.
@@ -108,7 +109,15 @@ func renderDiff(cfg renderConfig) string {
 		}
 
 		for hunkIdx, hunk := range file.Hunks {
-			key := hunkKey{file: path, hunkIndex: hunkIdx}
+			// When rendering a filtered diff, originalIndices maps the filtered
+			// position to the original hunk index for correct lookup in category/collapse maps.
+			origIdx := hunkIdx
+			if cfg.originalIndices != nil {
+				if idx, ok := cfg.originalIndices[hunkKey{file: path, hunkIndex: hunkIdx}]; ok {
+					origIdx = idx
+				}
+			}
+			key := hunkKey{file: path, hunkIndex: origIdx}
 
 			// Check if this hunk is collapsed
 			if cfg.collapsedHunks != nil && cfg.collapsedHunks[key] {

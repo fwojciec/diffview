@@ -303,8 +303,9 @@ func (m StoryModel) renderContent() string {
 	if m.onIntro() {
 		return m.renderIntro()
 	}
+	diff, originalIndices := m.filteredDiffWithIndices()
 	return renderDiff(renderConfig{
-		diff:             m.filteredDiff(),
+		diff:             diff,
 		styles:           m.styles,
 		renderer:         m.renderer,
 		width:            m.width,
@@ -314,6 +315,7 @@ func (m StoryModel) renderContent() string {
 		collapsedHunks:   m.collapsedHunks,
 		hunkCategories:   m.hunkCategories,
 		collapseText:     m.collapseText,
+		originalIndices:  originalIndices,
 	})
 }
 
@@ -350,15 +352,16 @@ func (m StoryModel) renderIntro() string {
 	return b.String()
 }
 
-// filteredDiff returns a diff containing only hunks from the active section.
-// If there are no sections or the active section is invalid, returns the full diff.
-func (m StoryModel) filteredDiff() *diffview.Diff {
+// filteredDiffWithIndices returns a diff containing only hunks from the active section,
+// along with a mapping from (file, filtered position) to original hunk index.
+// If there are no sections or the active section is invalid, returns the full diff with nil indices.
+func (m StoryModel) filteredDiffWithIndices() (*diffview.Diff, map[hunkKey]int) {
 	if m.diff == nil || m.story == nil || len(m.story.Sections) == 0 {
-		return m.diff
+		return m.diff, nil
 	}
 	idx := m.codeSectionIndex()
 	if idx < 0 || idx >= len(m.story.Sections) {
-		return m.diff
+		return m.diff, nil
 	}
 
 	// Build a set of hunks in the active section
@@ -369,12 +372,17 @@ func (m StoryModel) filteredDiff() *diffview.Diff {
 	}
 
 	// Create filtered diff with only files/hunks from active section
+	// Also build mapping from filtered position to original index
+	originalIndices := make(map[hunkKey]int)
 	var filteredFiles []diffview.FileDiff
 	for _, file := range m.diff.Files {
 		path := filePath(file)
 		var filteredHunks []diffview.Hunk
 		for hunkIdx, hunk := range file.Hunks {
 			if activeHunks[hunkKey{file: path, hunkIndex: hunkIdx}] {
+				// Map filtered position -> original index
+				filteredPos := len(filteredHunks)
+				originalIndices[hunkKey{file: path, hunkIndex: filteredPos}] = hunkIdx
 				filteredHunks = append(filteredHunks, hunk)
 			}
 		}
@@ -386,7 +394,14 @@ func (m StoryModel) filteredDiff() *diffview.Diff {
 		}
 	}
 
-	return &diffview.Diff{Files: filteredFiles}
+	return &diffview.Diff{Files: filteredFiles}, originalIndices
+}
+
+// filteredDiff returns a diff containing only hunks from the active section.
+// If there are no sections or the active section is invalid, returns the full diff.
+func (m StoryModel) filteredDiff() *diffview.Diff {
+	diff, _ := m.filteredDiffWithIndices()
+	return diff
 }
 
 // computePositions calculates line positions for the current section's filtered diff.

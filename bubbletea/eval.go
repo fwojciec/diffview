@@ -459,7 +459,7 @@ func (m *EvalModel) updateViewportContent() {
 	c := m.cases[m.currentIndex]
 
 	// Use filtered diff in story mode, full diff otherwise
-	diffToRender := m.filteredDiff()
+	diffToRender, originalIndices := m.filteredDiffWithIndices()
 
 	// Render diff content using styled renderer
 	diffContent := renderDiff(renderConfig{
@@ -473,6 +473,7 @@ func (m *EvalModel) updateViewportContent() {
 		collapsedHunks:   m.collapsedHunks,
 		hunkCategories:   m.hunkCategories,
 		collapseText:     m.collapseText,
+		originalIndices:  originalIndices,
 	})
 
 	// In story mode, prepend section header to diff content
@@ -808,11 +809,12 @@ func (m *EvalModel) toggleCollapsedHunks() {
 	m.updateViewportContent()
 }
 
-// filteredDiff returns a diff containing only hunks from the active section.
-// If not in story mode or no sections exist, returns the full diff.
-func (m *EvalModel) filteredDiff() *diffview.Diff {
+// filteredDiffWithIndices returns a diff containing only hunks from the active section,
+// along with a mapping from (file, filtered position) to original hunk index.
+// If not in story mode or no sections exist, returns the full diff with nil indices.
+func (m *EvalModel) filteredDiffWithIndices() (*diffview.Diff, map[hunkKey]int) {
 	if len(m.cases) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	c := m.cases[m.currentIndex]
@@ -820,12 +822,12 @@ func (m *EvalModel) filteredDiff() *diffview.Diff {
 
 	// Return full diff if not in story mode or no sections
 	if !m.storyMode || c.Story == nil || len(c.Story.Sections) == 0 {
-		return diff
+		return diff, nil
 	}
 
 	// Validate active section index
 	if m.activeSection < 0 || m.activeSection >= len(c.Story.Sections) {
-		return diff
+		return diff, nil
 	}
 
 	// Build a set of hunks in the active section
@@ -836,12 +838,17 @@ func (m *EvalModel) filteredDiff() *diffview.Diff {
 	}
 
 	// Create filtered diff with only files/hunks from active section
+	// Also build mapping from filtered position to original index
+	originalIndices := make(map[hunkKey]int)
 	var filteredFiles []diffview.FileDiff
 	for _, file := range diff.Files {
 		path := filePath(file)
 		var filteredHunks []diffview.Hunk
 		for hunkIdx, hunk := range file.Hunks {
 			if activeHunks[hunkKey{file: path, hunkIndex: hunkIdx}] {
+				// Map filtered position -> original index
+				filteredPos := len(filteredHunks)
+				originalIndices[hunkKey{file: path, hunkIndex: filteredPos}] = hunkIdx
 				filteredHunks = append(filteredHunks, hunk)
 			}
 		}
@@ -853,7 +860,7 @@ func (m *EvalModel) filteredDiff() *diffview.Diff {
 		}
 	}
 
-	return &diffview.Diff{Files: filteredFiles}
+	return &diffview.Diff{Files: filteredFiles}, originalIndices
 }
 
 // formatCaseForExport formats an EvalCase as markdown for LLM-assisted review.
