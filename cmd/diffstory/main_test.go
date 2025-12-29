@@ -226,7 +226,6 @@ func TestParseRange(t *testing.T) {
 		input     string
 		wantBase  string
 		wantHead  string
-		wantSep   string
 		wantError bool
 	}{
 		{
@@ -234,28 +233,24 @@ func TestParseRange(t *testing.T) {
 			input:    "main...feature",
 			wantBase: "main",
 			wantHead: "feature",
-			wantSep:  "...",
 		},
 		{
 			name:     "two-dot notation",
 			input:    "HEAD~3..HEAD",
 			wantBase: "HEAD~3",
 			wantHead: "HEAD",
-			wantSep:  "..",
 		},
 		{
 			name:     "origin prefix",
 			input:    "origin/main...feature-branch",
 			wantBase: "origin/main",
 			wantHead: "feature-branch",
-			wantSep:  "...",
 		},
 		{
 			name:     "commit hashes",
 			input:    "abc123..def456",
 			wantBase: "abc123",
 			wantHead: "def456",
-			wantSep:  "..",
 		},
 		{
 			name:      "no separator",
@@ -278,7 +273,7 @@ func TestParseRange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			base, head, sep, err := main.ParseRange(tt.input)
+			base, head, err := main.ParseRange(tt.input)
 
 			if tt.wantError {
 				assert.Error(t, err)
@@ -288,7 +283,6 @@ func TestParseRange(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantBase, base)
 			assert.Equal(t, tt.wantHead, head)
-			assert.Equal(t, tt.wantSep, sep)
 		})
 	}
 }

@@ -37,26 +37,24 @@ var ErrOnBaseBranch = errors.New("already on base branch, no changes to show")
 
 // ParseRange parses a git commit range specification into its components.
 // Supports both two-dot (A..B) and three-dot (A...B) notation.
-// Returns base ref, head ref, separator, and any error.
-func ParseRange(rangeSpec string) (base, head, sep string, err error) {
+// Returns base ref, head ref, and any error.
+func ParseRange(rangeSpec string) (base, head string, err error) {
 	// Try three-dot first (must check before two-dot since "..." contains "..")
 	if idx := strings.Index(rangeSpec, "..."); idx != -1 {
 		base = rangeSpec[:idx]
 		head = rangeSpec[idx+3:]
-		sep = "..."
 	} else if idx := strings.Index(rangeSpec, ".."); idx != -1 {
 		base = rangeSpec[:idx]
 		head = rangeSpec[idx+2:]
-		sep = ".."
 	} else {
-		return "", "", "", ErrInvalidRange
+		return "", "", ErrInvalidRange
 	}
 
 	if base == "" || head == "" {
-		return "", "", "", ErrInvalidRange
+		return "", "", ErrInvalidRange
 	}
 
-	return base, head, sep, nil
+	return base, head, nil
 }
 
 // App encapsulates the application logic for testing.
@@ -178,12 +176,16 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `Usage: diffstory [range] [command]
+	fmt.Fprintf(os.Stderr, `Usage: diffstory [range | command]
 
-Commands:
-  (default)              Analyze current branch diff with LLM classification
+Modes:
+  (default)              Analyze current branch diff vs auto-detected base
   <range>                Analyze diff for specific commit range
   replay <file> [index]  Replay a saved eval case from JSONL file
+
+Range examples:
+  main...feature         Three-dot: changes on feature since diverging from main
+  HEAD~3..HEAD           Two-dot: diff between two points
 
 Examples:
   diffstory                      # Analyze current branch vs base
@@ -208,12 +210,11 @@ func run() error {
 			usage()
 			return nil
 		default:
-			// Check if this looks like a commit range (contains "..")
-			if strings.Contains(os.Args[1], "..") {
-				rangeArg = os.Args[1]
-			} else {
+			// Validate as commit range - provides helpful error for malformed ranges
+			if _, _, err := ParseRange(os.Args[1]); err != nil {
 				return fmt.Errorf("unknown argument %q (use --help for usage)", os.Args[1])
 			}
+			rangeArg = os.Args[1]
 		}
 	}
 
@@ -290,7 +291,7 @@ func run() error {
 	var branchName string
 	if rangeArg != "" {
 		// Range mode: parse range and get commits
-		base, head, _, parseErr := ParseRange(rangeArg)
+		base, head, parseErr := ParseRange(rangeArg)
 		if parseErr == nil {
 			commits, _ = gitRunner.CommitsInRange(ctx, cwd, base, head)
 		}
