@@ -18,10 +18,6 @@ type EvalKeyMap struct {
 	GotoTop      key.Binding
 	GotoBottom   key.Binding
 
-	// Hunk navigation (when diff panel active)
-	NextHunk key.Binding
-	PrevHunk key.Binding
-
 	// Story mode navigation
 	NextSection   key.Binding
 	PrevSection   key.Binding
@@ -87,14 +83,6 @@ func DefaultEvalKeyMap() EvalKeyMap {
 		GotoBottom: key.NewBinding(
 			key.WithKeys("G"),
 			key.WithHelp("G", "go to bottom"),
-		),
-		NextHunk: key.NewBinding(
-			key.WithKeys("h"),
-			key.WithHelp("h", "next hunk"),
-		),
-		PrevHunk: key.NewBinding(
-			key.WithKeys("H"),
-			key.WithHelp("H", "previous hunk"),
 		),
 		NextSection: key.NewBinding(
 			key.WithKeys("]"),

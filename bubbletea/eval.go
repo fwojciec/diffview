@@ -261,15 +261,11 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keymap.IncreaseSplit):
-		if m.storyMode {
-			m.adjustSplit(10)
-		}
+		m.adjustSplit(10)
 		return m, nil
 
 	case key.Matches(msg, m.keymap.DecreaseSplit):
-		if m.storyMode {
-			m.adjustSplit(-10)
-		}
+		m.adjustSplit(-10)
 		return m, nil
 
 	case key.Matches(msg, m.keymap.Pass):
@@ -967,12 +963,12 @@ func (m EvalModel) renderHelpView() string {
 	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("g/G"), descStyle.Render("go to top/bottom")))
 	s.WriteString("\n")
 
-	// Story Mode
-	s.WriteString(headerStyle.Render("Story Mode"))
+	// View
+	s.WriteString(headerStyle.Render("View"))
 	s.WriteString("\n")
-	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("]/["), descStyle.Render("next/previous section")))
-	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("+/-"), descStyle.Render("resize split")))
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("=/+/-"), descStyle.Render("resize split")))
 	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("m"), descStyle.Render("toggle story/raw mode")))
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("]/["), descStyle.Render("next/prev section (story mode)")))
 	s.WriteString("\n")
 
 	// Judgment
