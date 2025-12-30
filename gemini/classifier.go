@@ -307,7 +307,22 @@ Group hunks into sections with meaningful roles that tell the story of the chang
 ## Rules
 - Every hunk from the input must appear in exactly one section
 - **CRITICAL: hunk_index is 0-based.** If a file has N hunks, valid indices are 0 through N-1. For example, a file with 7 hunks has valid indices 0, 1, 2, 3, 4, 5, 6 (NOT 7).
-- collapse_text provides a summary when collapsed is true`, formattedInput)
+- collapse_text provides a summary when collapsed is true
+
+## Commit History and Evolution
+
+When the input includes multiple commits with per-commit diffs, use this history to understand how the change developed:
+
+**Using commit progression:**
+- The commit sequence shows the author's development journey
+- Early commits often establish foundations; later commits add polish, edge cases, or tests
+- Section explanations can reference specific commits when relevant (e.g., "Added in commit 2 after initial implementation")
+
+**The evolution field:**
+- Populate "evolution" when commit history reveals meaningful progression
+- Good examples: "Initial feature in commit 1, refined API based on usage in commit 2, added edge case handling in commit 3"
+- Omit or leave empty for single-commit PRs or when commits are mechanical (formatting, renames)
+- The evolution should help reviewers understand the development thought process, not just list commits`, formattedInput)
 }
 
 // BuildClassificationConfig returns config for classification calls.
@@ -355,6 +370,10 @@ func classificationSchema() *Schema {
 			"summary": {
 				Type:        "string",
 				Description: "One sentence describing what this change does",
+			},
+			"evolution": {
+				Type:        "string",
+				Description: "How changes evolved across commits. Describe the development journey when commit history reveals meaningful progression (e.g., 'Initial implementation in commit 1, edge cases added in commit 2'). Omit or leave empty for single-commit PRs or when history adds no insight.",
 			},
 			"sections": {
 				Type:        "array",
@@ -414,6 +433,6 @@ func classificationSchema() *Schema {
 			},
 		},
 		Required:         []string{"change_type", "narrative", "summary", "sections"},
-		PropertyOrdering: []string{"change_type", "narrative", "summary", "sections"},
+		PropertyOrdering: []string{"change_type", "narrative", "summary", "evolution", "sections"},
 	}
 }
