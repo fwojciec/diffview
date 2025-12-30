@@ -23,9 +23,11 @@ type EvalKeyMap struct {
 	PrevHunk key.Binding
 
 	// Story mode navigation
-	NextSection key.Binding
-	PrevSection key.Binding
-	ToggleMode  key.Binding
+	NextSection   key.Binding
+	PrevSection   key.Binding
+	ToggleMode    key.Binding
+	IncreaseSplit key.Binding
+	DecreaseSplit key.Binding
 
 	// Judgment
 	Pass     key.Binding
@@ -47,12 +49,12 @@ type EvalKeyMap struct {
 func DefaultEvalKeyMap() EvalKeyMap {
 	return EvalKeyMap{
 		NextCase: key.NewBinding(
-			key.WithKeys("]"),
-			key.WithHelp("]", "next case"),
+			key.WithKeys("n"),
+			key.WithHelp("n", "next case"),
 		),
 		PrevCase: key.NewBinding(
-			key.WithKeys("["),
-			key.WithHelp("[", "previous case"),
+			key.WithKeys("N"),
+			key.WithHelp("N", "previous case"),
 		),
 		NextUnjudged: key.NewBinding(
 			key.WithKeys("u"),
@@ -87,24 +89,32 @@ func DefaultEvalKeyMap() EvalKeyMap {
 			key.WithHelp("G", "go to bottom"),
 		),
 		NextHunk: key.NewBinding(
-			key.WithKeys("n"),
-			key.WithHelp("n", "next hunk"),
+			key.WithKeys("h"),
+			key.WithHelp("h", "next hunk"),
 		),
 		PrevHunk: key.NewBinding(
-			key.WithKeys("N"),
-			key.WithHelp("N", "previous hunk"),
+			key.WithKeys("H"),
+			key.WithHelp("H", "previous hunk"),
 		),
 		NextSection: key.NewBinding(
-			key.WithKeys("s"),
-			key.WithHelp("s", "next section"),
+			key.WithKeys("]"),
+			key.WithHelp("]", "next section"),
 		),
 		PrevSection: key.NewBinding(
-			key.WithKeys("S"),
-			key.WithHelp("S", "previous section"),
+			key.WithKeys("["),
+			key.WithHelp("[", "previous section"),
 		),
 		ToggleMode: key.NewBinding(
 			key.WithKeys("m"),
 			key.WithHelp("m", "toggle story/raw mode"),
+		),
+		IncreaseSplit: key.NewBinding(
+			key.WithKeys("+", "="),
+			key.WithHelp("+", "increase metadata pane"),
+		),
+		DecreaseSplit: key.NewBinding(
+			key.WithKeys("-"),
+			key.WithHelp("-", "decrease metadata pane"),
 		),
 		Pass: key.NewBinding(
 			key.WithKeys("p"),

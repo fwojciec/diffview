@@ -47,6 +47,7 @@ type EvalModel struct {
 	collapsedHunks   map[hunkKey]bool   // hunk collapse state
 	hunkCategories   map[hunkKey]string // hunk → category for styling
 	collapseText     map[hunkKey]string // hunk → collapse text
+	splitRatio       int                // percentage of height for metadata pane (0-100)
 
 	// Rendering
 	width, height    int
@@ -134,6 +135,7 @@ func NewEvalModel(cases []diffview.EvalCase, opts ...EvalModelOption) EvalModel 
 		collapsedHunks:   make(map[hunkKey]bool),
 		hunkCategories:   make(map[hunkKey]string),
 		collapseText:     make(map[hunkKey]string),
+		splitRatio:       30, // 30% metadata, 70% diff by default
 	}
 
 	for _, opt := range opts {
@@ -258,6 +260,18 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case key.Matches(msg, m.keymap.IncreaseSplit):
+		if m.storyMode {
+			m.adjustSplit(10)
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keymap.DecreaseSplit):
+		if m.storyMode {
+			m.adjustSplit(-10)
+		}
+		return m, nil
+
 	case key.Matches(msg, m.keymap.Pass):
 		m.recordJudgment(true)
 		return m, nil
@@ -354,25 +368,26 @@ func (m *EvalModel) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd)
 	m.width = msg.Width
 	m.height = msg.Height
 
-	// Calculate panel heights
-	// Reserve: judgment bar (1), status bar (2), borders (3)
+	// Calculate panel heights using split ratio
+	// Reserve: DIFF header (1), STORY header (1), judgment bar (1), status bar (1) = 4
+	// Plus newlines after each viewport (2) = 6 total reserved
 	usableHeight := msg.Height - 6
 	if usableHeight < 2 {
 		usableHeight = 2 // Minimum height for tiny terminals
 	}
-	diffHeight := usableHeight * 50 / 100
-	storyHeight := usableHeight - diffHeight
+	metadataHeight := usableHeight * m.splitRatio / 100
+	diffHeight := usableHeight - metadataHeight
 
 	if !m.ready {
 		m.diffViewport = viewport.New(msg.Width, diffHeight)
-		m.storyViewport = viewport.New(msg.Width, storyHeight)
+		m.storyViewport = viewport.New(msg.Width, metadataHeight)
 		m.updateViewportContent()
 		m.ready = true
 	} else {
 		m.diffViewport.Width = msg.Width
 		m.diffViewport.Height = diffHeight
 		m.storyViewport.Width = msg.Width
-		m.storyViewport.Height = storyHeight
+		m.storyViewport.Height = metadataHeight
 	}
 
 	return m, nil
@@ -405,43 +420,41 @@ func (m *EvalModel) updateViewportContent() {
 		originalIndices:  originalIndices,
 	})
 
-	// In story mode, prepend section header to diff content
-	if m.storyMode && c.Story != nil && m.activeSection < len(c.Story.Sections) {
-		section := c.Story.Sections[m.activeSection]
-		header := m.renderSectionHeader(section)
-		diffContent = header + "\n" + diffContent
-	}
-
 	m.diffViewport.SetContent(diffContent)
 	m.diffViewport.GotoTop()
 
-	// Render story content from StoryClassification
-	var storyContent strings.Builder
-	if c.Story != nil {
-		storyContent.WriteString(fmt.Sprintf("[%s] %s\n", c.Story.ChangeType, c.Story.Narrative))
-		storyContent.WriteString(fmt.Sprintf("%s\n\n", c.Story.Summary))
+	// Render metadata content based on mode
+	var metadataContent strings.Builder
+	if m.storyMode && c.Story != nil && m.activeSection < len(c.Story.Sections) {
+		// Story mode: show section-level metadata only
+		section := c.Story.Sections[m.activeSection]
+		metadataContent.WriteString(m.renderSectionHeader(section))
+	} else if c.Story != nil {
+		// Raw mode: show full classification tree
+		metadataContent.WriteString(fmt.Sprintf("[%s] %s\n", c.Story.ChangeType, c.Story.Narrative))
+		metadataContent.WriteString(fmt.Sprintf("%s\n\n", c.Story.Summary))
 		for _, section := range c.Story.Sections {
-			storyContent.WriteString(fmt.Sprintf("• %s: %s\n", section.Role, section.Title))
-			storyContent.WriteString(fmt.Sprintf("  %s\n", section.Explanation))
+			metadataContent.WriteString(fmt.Sprintf("• %s: %s\n", section.Role, section.Title))
+			metadataContent.WriteString(fmt.Sprintf("  %s\n", section.Explanation))
 			if len(section.Hunks) > 0 {
 				var hunkRefs []string
 				for _, h := range section.Hunks {
 					hunkRefs = append(hunkRefs, fmt.Sprintf("%s:H%d", h.File, h.HunkIndex))
 				}
-				storyContent.WriteString(fmt.Sprintf("  hunks: %s\n", strings.Join(hunkRefs, ", ")))
+				metadataContent.WriteString(fmt.Sprintf("  hunks: %s\n", strings.Join(hunkRefs, ", ")))
 			}
 		}
 	} else {
-		storyContent.WriteString("[Not yet classified]")
+		metadataContent.WriteString("[Not yet classified]")
 	}
 
 	// Add critique if present (full text, not truncated)
 	if j := m.judgments[c.Input.CaseID()]; j != nil && j.Critique != "" {
-		storyContent.WriteString("\n\nCRITIQUE:\n")
-		storyContent.WriteString(j.Critique)
+		metadataContent.WriteString("\n\nCRITIQUE:\n")
+		metadataContent.WriteString(j.Critique)
 	}
 
-	m.storyViewport.SetContent(storyContent.String())
+	m.storyViewport.SetContent(metadataContent.String())
 	m.storyViewport.GotoTop()
 }
 
@@ -653,6 +666,39 @@ func (m *EvalModel) gotoPrevSection() {
 	}
 }
 
+// adjustSplit adjusts the split ratio by the given delta (positive = more metadata).
+// Clamps the ratio between 10% and 90%.
+func (m *EvalModel) adjustSplit(delta int) {
+	m.splitRatio += delta
+	if m.splitRatio < 10 {
+		m.splitRatio = 10
+	}
+	if m.splitRatio > 90 {
+		m.splitRatio = 90
+	}
+	m.recalculateViewportSizes()
+}
+
+// recalculateViewportSizes updates viewport dimensions based on current split ratio.
+func (m *EvalModel) recalculateViewportSizes() {
+	if !m.ready || m.height == 0 {
+		return
+	}
+	// Reserve: DIFF header (1), STORY header (1), judgment bar (1), status bar (1) = 4
+	// Plus newlines after each viewport (2) = 6 total reserved
+	usableHeight := m.height - 6
+	if usableHeight < 2 {
+		usableHeight = 2
+	}
+	metadataHeight := usableHeight * m.splitRatio / 100
+	diffHeight := usableHeight - metadataHeight
+
+	m.storyViewport.Width = m.width
+	m.storyViewport.Height = metadataHeight
+	m.diffViewport.Width = m.width
+	m.diffViewport.Height = diffHeight
+}
+
 // renderSectionHeader formats the section header for display in the diff panel.
 func (m *EvalModel) renderSectionHeader(section diffview.Section) string {
 	header := fmt.Sprintf("[%s] %s", section.Role, section.Title)
@@ -857,16 +903,20 @@ func (m EvalModel) View() string {
 
 	var s strings.Builder
 
-	// Diff panel header
+	// Metadata panel (top) - section info in story mode, classification tree in raw mode
+	panelName := "STORY"
+	if m.storyMode {
+		panelName = "SECTION"
+	}
+	s.WriteString(m.renderPanelHeader(panelName))
+	s.WriteString("\n")
+	s.WriteString(m.storyViewport.View())
+	s.WriteString("\n")
+
+	// Diff panel (bottom) - filtered hunks in story mode, full diff in raw mode
 	s.WriteString(m.renderPanelHeader("DIFF"))
 	s.WriteString("\n")
 	s.WriteString(m.diffViewport.View())
-	s.WriteString("\n")
-
-	// Story panel header
-	s.WriteString(m.renderPanelHeader("STORY"))
-	s.WriteString("\n")
-	s.WriteString(m.storyViewport.View())
 	s.WriteString("\n")
 
 	// Judgment bar
@@ -905,7 +955,7 @@ func (m EvalModel) renderHelpView() string {
 	// Navigation
 	s.WriteString(headerStyle.Render("Navigation"))
 	s.WriteString("\n")
-	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("]/["), descStyle.Render("next/previous case")))
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("n/N"), descStyle.Render("next/previous case")))
 	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("u/U"), descStyle.Render("next/previous unjudged")))
 	s.WriteString("\n")
 
@@ -920,7 +970,8 @@ func (m EvalModel) renderHelpView() string {
 	// Story Mode
 	s.WriteString(headerStyle.Render("Story Mode"))
 	s.WriteString("\n")
-	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("s/S"), descStyle.Render("next/previous section")))
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("]/["), descStyle.Render("next/previous section")))
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("+/-"), descStyle.Render("resize split")))
 	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("m"), descStyle.Render("toggle story/raw mode")))
 	s.WriteString("\n")
 
@@ -1066,7 +1117,7 @@ func (m EvalModel) renderStatusBar() string {
 		modeInfo = "raw mode"
 	}
 
-	help := "[p]ass [f]ail [c]ritique [y]ank ]/[nav [?]help [q]uit"
+	help := "[p]ass [f]ail [c]ritique [y]ank n/N case ]/[ section [?]help [q]uit"
 
 	if sectionProgress != "" {
 		return fmt.Sprintf("%s │ %s │ %s │ %s │ %s │ %s", modeInfo, sectionProgress, caseInfo, progress, indicatorBar, help)

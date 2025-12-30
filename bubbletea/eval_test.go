@@ -87,9 +87,10 @@ func TestEvalModel_QuitOnQ(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestEvalModel_NavigationWithBrackets(t *testing.T) {
+func TestEvalModel_CaseNavigationWithN(t *testing.T) {
 	t.Parallel()
 
+	// Per design doc: n/N navigates between cases (replacing ]/[)
 	cases := []diffview.EvalCase{
 		{
 			Input: diffview.ClassificationInput{
@@ -133,16 +134,16 @@ func TestEvalModel_NavigationWithBrackets(t *testing.T) {
 		return bytes.Contains(out, []byte("First case"))
 	})
 
-	// Navigate to next case with ']'
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	// Navigate to next case with 'n'
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 
 	// Wait for second case to appear
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("Second case"))
 	})
 
-	// Navigate back with '['
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
+	// Navigate back with 'N'
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
 
 	// Wait for first case to appear again
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -156,7 +157,7 @@ func TestEvalModel_NavigationWithBrackets(t *testing.T) {
 func TestEvalModel_NavigationBetweenCases(t *testing.T) {
 	t.Parallel()
 
-	// Tests navigation between cases: forward with ], backward with [.
+	// Tests navigation between cases: forward with n, backward with N.
 	cases := []diffview.EvalCase{
 		{Input: diffview.ClassificationInput{Repo: "repo", Branch: "first", Commits: []diffview.CommitBrief{{Hash: "first"}}}, Story: &diffview.StoryClassification{Summary: "First summary"}},
 		{Input: diffview.ClassificationInput{Repo: "repo", Branch: "second", Commits: []diffview.CommitBrief{{Hash: "second"}}}, Story: &diffview.StoryClassification{Summary: "Second summary"}},
@@ -173,14 +174,14 @@ func TestEvalModel_NavigationBetweenCases(t *testing.T) {
 	})
 
 	// Navigate forward then back
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("Second summary"))
 	})
 
 	// Navigate back to first
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("First summary"))
@@ -280,7 +281,7 @@ func TestEvalModel_JudgmentUpdatesProgress(t *testing.T) {
 	})
 
 	// Navigate to second and judge
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("Case B"))
@@ -323,7 +324,7 @@ func TestEvalModel_StatusBarShowsJudgmentIndicators(t *testing.T) {
 	})
 
 	// Navigate to second and mark as fail - should show ✓ ✗ ○
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -445,8 +446,8 @@ func TestEvalModel_JumpToPrevUnjudged(t *testing.T) {
 		return bytes.Contains(out, []byte("Case 1"))
 	})
 
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("Case 3"))
@@ -632,9 +633,9 @@ func TestEvalModel_CopyCaseToClipboard(t *testing.T) {
 		teatest.WithInitialTermSize(100, 40),
 	)
 
-	// Wait for model to be ready (content appears in viewport)
+	// Wait for model to be ready (section info appears in viewport)
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Added a new feature"))
+		return bytes.Contains(out, []byte("Main implementation"))
 	})
 
 	// Press 'y' to copy case to clipboard
@@ -741,8 +742,8 @@ func TestEvalModel_JKScrollsDiffViewport(t *testing.T) {
 	// This sends the key but doesn't change visible content
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 
-	// Navigate to next case with ]
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	// Navigate to next case with n
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 
 	// Now we should see second case
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -976,7 +977,7 @@ func TestEvalModel_StoryModeShowsOnlyCurrentSectionHunks(t *testing.T) {
 	})
 
 	// Navigate to section 2
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
 
 	// Now should show SECTION_TWO_CONTENT but NOT SECTION_ONE_CONTENT
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -1105,14 +1106,14 @@ func TestEvalModel_CaseNavigationResetsStoryModeState(t *testing.T) {
 		return bytes.Contains(out, []byte("section 1/2"))
 	})
 
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("section 2/2"))
 	})
 
 	// Navigate to case 2 - should reset to section 1/1
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("section 1/1")) &&
@@ -1120,7 +1121,7 @@ func TestEvalModel_CaseNavigationResetsStoryModeState(t *testing.T) {
 	})
 
 	// Navigate back to case 1 - should reset to section 1/2 (not stay at 2/2)
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("section 1/2")) &&
@@ -1179,7 +1180,7 @@ func TestEvalModel_SectionProgressIndicator(t *testing.T) {
 
 	// Navigate to section 2 - section 1 becomes reviewed
 	// Expect: ✓ ● ○ (reviewed is check, current is filled)
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("✓ ● ○"))
@@ -1187,7 +1188,7 @@ func TestEvalModel_SectionProgressIndicator(t *testing.T) {
 
 	// Navigate to section 3
 	// Expect: ✓ ✓ ●
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("✓ ✓ ●"))
@@ -1197,10 +1198,10 @@ func TestEvalModel_SectionProgressIndicator(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestEvalModel_SectionNavigationWithS(t *testing.T) {
+func TestEvalModel_SectionNavigationWithBrackets(t *testing.T) {
 	t.Parallel()
 
-	// Create a case with multiple sections
+	// Per design doc: ]/[ navigates between sections (replacing s/S)
 	cases := []diffview.EvalCase{
 		{
 			Input: diffview.ClassificationInput{
@@ -1257,23 +1258,23 @@ func TestEvalModel_SectionNavigationWithS(t *testing.T) {
 		return bytes.Contains(out, []byte("section 1/3"))
 	})
 
-	// Press 's' to go to next section
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	// Press ']' to go to next section
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
 
 	// Should show section 2/3
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("section 2/3"))
 	})
 
-	// Press 's' again to go to section 3
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	// Press ']' again to go to section 3
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("section 3/3"))
 	})
 
-	// Press 'S' to go back to section 2
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	// Press '[' to go back to section 2
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("section 2/3"))
@@ -1502,6 +1503,66 @@ func TestEvalModel_FilteredDiffUsesOriginalHunkIndices(t *testing.T) {
 		return hasCorrectCollapseText && noWrongCollapseText && noHunkZeroContent
 	})
 
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_SplitResize(t *testing.T) {
+	t.Parallel()
+
+	// Per design doc: +/- resizes the story/diff split ratio
+	// This is a unit test of the key handling - the visual test is handled
+	// by the existing story mode tests.
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "code"}}},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Summary:    "Test feature",
+				Sections: []diffview.Section{
+					{
+						Role:        "core",
+						Title:       "Main Implementation",
+						Explanation: "The primary logic for the feature",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 0}},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Wait for story mode to be active first
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("story mode"))
+	})
+
+	// Press '+' to increase metadata pane (key just needs to not crash)
+	// The split ratio change is internal state, we just verify UI still works
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
+
+	// Wait a tiny bit for the key to be processed, then press '-'
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'-'}})
+
+	// Quit and verify app exits normally
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
