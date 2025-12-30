@@ -981,6 +981,47 @@ func (m EvalModel) renderJudgmentBar() string {
 	return fmt.Sprintf("%s Pass  %s Fail    Critique: %s", passMarker, failMarker, critique)
 }
 
+// RenderDataView formats the classification as a structured tree for data view.
+// It shows change_type, narrative, summary at top, followed by sections with
+// their role, explanation, and hunk references.
+// The width parameter is reserved for future text wrapping of long content.
+func RenderDataView(story *diffview.StoryClassification, width int) string {
+	if story == nil {
+		return "[Not yet classified]"
+	}
+
+	var s strings.Builder
+
+	// Classification metadata
+	s.WriteString(fmt.Sprintf("change_type: %s\n", story.ChangeType))
+	s.WriteString(fmt.Sprintf("narrative:   %s\n", story.Narrative))
+	s.WriteString(fmt.Sprintf("summary:     %s\n", story.Summary))
+	s.WriteString("\n")
+
+	// Sections header
+	s.WriteString("── sections ──────────────────────────────────────────\n")
+	s.WriteString("\n")
+
+	// Each section
+	for _, section := range story.Sections {
+		s.WriteString(fmt.Sprintf("[%s] %s\n", section.Role, section.Title))
+		s.WriteString(fmt.Sprintf("  explanation: %s\n", section.Explanation))
+		if len(section.Hunks) > 0 {
+			s.WriteString("  hunks:\n")
+			for _, h := range section.Hunks {
+				state := "visible"
+				if h.Collapsed {
+					state = "collapsed"
+				}
+				s.WriteString(fmt.Sprintf("    %s:H%d    %s      %s\n", h.File, h.HunkIndex, h.Category, state))
+			}
+		}
+		s.WriteString("\n")
+	}
+
+	return s.String()
+}
+
 func (m EvalModel) renderStatusBar() string {
 	if len(m.cases) == 0 {
 		return "No cases"

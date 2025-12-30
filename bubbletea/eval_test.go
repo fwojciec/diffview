@@ -1283,6 +1283,120 @@ func TestEvalModel_SectionNavigationWithS(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
+func TestRenderDataView_FormatsClassificationAsTree(t *testing.T) {
+	t.Parallel()
+
+	// Data View should show the classification as a structured tree:
+	// - change_type, narrative, summary at top
+	// - sections with role, explanation, hunk list
+	// - each hunk with file:hunk_index, category, collapsed state
+
+	story := &diffview.StoryClassification{
+		ChangeType: "bugfix",
+		Narrative:  "cause-effect",
+		Summary:    "Fix incorrect metadata lookups in filtered diff views",
+		Sections: []diffview.Section{
+			{
+				Role:        "problem",
+				Title:       "Identify the Bug",
+				Explanation: "Shows the buggy code that caused the issue",
+				Hunks: []diffview.HunkRef{
+					{File: "bubbletea/eval.go", HunkIndex: 0, Category: "core", Collapsed: false},
+				},
+			},
+			{
+				Role:        "fix",
+				Title:       "Index Mapping Logic",
+				Explanation: "This is the core of the fix",
+				Hunks: []diffview.HunkRef{
+					{File: "bubbletea/render.go", HunkIndex: 0, Category: "core", Collapsed: true},
+					{File: "bubbletea/render.go", HunkIndex: 1, Category: "core", Collapsed: false},
+				},
+			},
+		},
+	}
+
+	result := bubbletea.RenderDataView(story, 80)
+
+	// Should show classification metadata
+	assert.Contains(t, result, "change_type: bugfix")
+	assert.Contains(t, result, "narrative:   cause-effect")
+	assert.Contains(t, result, "summary:")
+	assert.Contains(t, result, "Fix incorrect metadata lookups")
+
+	// Should show sections header
+	assert.Contains(t, result, "sections")
+
+	// Should show section details with role badge
+	assert.Contains(t, result, "[problem]")
+	assert.Contains(t, result, "Identify the Bug")
+	assert.Contains(t, result, "Shows the buggy code")
+
+	assert.Contains(t, result, "[fix]")
+	assert.Contains(t, result, "Index Mapping Logic")
+	assert.Contains(t, result, "This is the core of the fix")
+
+	// Should show hunk references with file:hunk_index, category, and collapse state
+	assert.Contains(t, result, "bubbletea/eval.go:H0")
+	assert.Contains(t, result, "core")
+	assert.Contains(t, result, "visible")
+
+	assert.Contains(t, result, "bubbletea/render.go:H0")
+	assert.Contains(t, result, "collapsed")
+
+	assert.Contains(t, result, "bubbletea/render.go:H1")
+}
+
+func TestRenderDataView_HandlesNilStory(t *testing.T) {
+	t.Parallel()
+
+	result := bubbletea.RenderDataView(nil, 80)
+
+	assert.Contains(t, result, "Not yet classified")
+}
+
+func TestRenderDataView_HandlesEmptySections(t *testing.T) {
+	t.Parallel()
+
+	story := &diffview.StoryClassification{
+		ChangeType: "refactor",
+		Narrative:  "before-after",
+		Summary:    "Simplify the code structure",
+		Sections:   []diffview.Section{},
+	}
+
+	result := bubbletea.RenderDataView(story, 80)
+
+	assert.Contains(t, result, "change_type: refactor")
+	assert.Contains(t, result, "sections")
+	// No section content but header should still be present
+}
+
+func TestRenderDataView_SectionWithNoHunks(t *testing.T) {
+	t.Parallel()
+
+	story := &diffview.StoryClassification{
+		ChangeType: "docs",
+		Narrative:  "explanatory",
+		Summary:    "Update documentation",
+		Sections: []diffview.Section{
+			{
+				Role:        "docs",
+				Title:       "Documentation Update",
+				Explanation: "Clarifies the API usage",
+				Hunks:       nil, // No hunks in this section
+			},
+		},
+	}
+
+	result := bubbletea.RenderDataView(story, 80)
+
+	assert.Contains(t, result, "[docs] Documentation Update")
+	assert.Contains(t, result, "Clarifies the API usage")
+	// Should NOT contain "hunks:" label when section has no hunks
+	assert.NotContains(t, result, "hunks:")
+}
+
 func TestEvalModel_FilteredDiffUsesOriginalHunkIndices(t *testing.T) {
 	t.Parallel()
 
