@@ -43,6 +43,7 @@ type EvalModel struct {
 	// UI Components
 	diffViewport     viewport.Model
 	storyViewport    viewport.Model
+	dataViewport     viewport.Model
 	critiqueTextarea textarea.Model
 
 	// State
@@ -229,27 +230,51 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keymap.ScrollDown):
-		m.diffViewport.ScrollDown(1)
+		if m.viewMode == ViewData {
+			m.dataViewport.ScrollDown(1)
+		} else {
+			m.diffViewport.ScrollDown(1)
+		}
 		return m, nil
 
 	case key.Matches(msg, m.keymap.ScrollUp):
-		m.diffViewport.ScrollUp(1)
+		if m.viewMode == ViewData {
+			m.dataViewport.ScrollUp(1)
+		} else {
+			m.diffViewport.ScrollUp(1)
+		}
 		return m, nil
 
 	case key.Matches(msg, m.keymap.HalfPageUp):
-		m.diffViewport.HalfPageUp()
+		if m.viewMode == ViewData {
+			m.dataViewport.HalfPageUp()
+		} else {
+			m.diffViewport.HalfPageUp()
+		}
 		return m, nil
 
 	case key.Matches(msg, m.keymap.HalfPageDown):
-		m.diffViewport.HalfPageDown()
+		if m.viewMode == ViewData {
+			m.dataViewport.HalfPageDown()
+		} else {
+			m.diffViewport.HalfPageDown()
+		}
 		return m, nil
 
 	case key.Matches(msg, m.keymap.GotoTop):
-		m.diffViewport.GotoTop()
+		if m.viewMode == ViewData {
+			m.dataViewport.GotoTop()
+		} else {
+			m.diffViewport.GotoTop()
+		}
 		return m, nil
 
 	case key.Matches(msg, m.keymap.GotoBottom):
-		m.diffViewport.GotoBottom()
+		if m.viewMode == ViewData {
+			m.dataViewport.GotoBottom()
+		} else {
+			m.diffViewport.GotoBottom()
+		}
 		return m, nil
 
 	case key.Matches(msg, m.keymap.ToggleMode):
@@ -386,9 +411,16 @@ func (m *EvalModel) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd)
 	metadataHeight := usableHeight * m.splitRatio / 100
 	diffHeight := usableHeight - metadataHeight
 
+	// Data view uses full height minus header (1), judgment bar (1), status bar (1) = 3
+	dataHeight := msg.Height - 3
+	if dataHeight < 1 {
+		dataHeight = 1
+	}
+
 	if !m.ready {
 		m.diffViewport = viewport.New(msg.Width, diffHeight)
 		m.storyViewport = viewport.New(msg.Width, metadataHeight)
+		m.dataViewport = viewport.New(msg.Width, dataHeight)
 		m.updateViewportContent()
 		m.ready = true
 	} else {
@@ -396,6 +428,8 @@ func (m *EvalModel) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd)
 		m.diffViewport.Height = diffHeight
 		m.storyViewport.Width = msg.Width
 		m.storyViewport.Height = metadataHeight
+		m.dataViewport.Width = msg.Width
+		m.dataViewport.Height = dataHeight
 	}
 
 	return m, nil
@@ -464,6 +498,14 @@ func (m *EvalModel) updateViewportContent() {
 
 	m.storyViewport.SetContent(metadataContent.String())
 	m.storyViewport.GotoTop()
+
+	// Update data viewport content
+	if c.Story != nil {
+		m.dataViewport.SetContent(RenderDataView(c.Story, m.width))
+	} else {
+		m.dataViewport.SetContent("[Not yet classified]")
+	}
+	m.dataViewport.GotoTop()
 }
 
 func (m *EvalModel) recordJudgment(pass bool) {
@@ -711,6 +753,14 @@ func (m *EvalModel) recalculateViewportSizes() {
 	m.storyViewport.Height = metadataHeight
 	m.diffViewport.Width = m.width
 	m.diffViewport.Height = diffHeight
+
+	// Data view uses full height minus header (1), judgment bar (1), status bar (1) = 3
+	dataHeight := m.height - 3
+	if dataHeight < 1 {
+		dataHeight = 1
+	}
+	m.dataViewport.Width = m.width
+	m.dataViewport.Height = dataHeight
 }
 
 // renderSectionHeader formats the section header for display in the diff panel.
@@ -1008,20 +1058,9 @@ func (m EvalModel) renderDataViewScreen() string {
 	s.WriteString(header)
 	s.WriteString("\n")
 
-	// Render classification tree using RenderDataView
-	if len(m.cases) > 0 {
-		c := m.cases[m.currentIndex]
-		s.WriteString(RenderDataView(c.Story, m.width))
-	} else {
-		s.WriteString("[No cases loaded]")
-	}
-
-	// Pad to fill screen height (reserve 3 lines: header, judgment bar, status bar)
-	content := s.String()
-	lines := strings.Count(content, "\n")
-	for i := lines; i < m.height-3; i++ {
-		s.WriteString("\n")
-	}
+	// Render classification tree using viewport for scrolling
+	s.WriteString(m.dataViewport.View())
+	s.WriteString("\n")
 
 	// Judgment bar
 	s.WriteString(m.renderJudgmentBar())
