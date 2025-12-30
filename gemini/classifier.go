@@ -332,7 +332,7 @@ Be precise and consistent. Focus on helping a reviewer quickly understand the ch
 		},
 		ResponseMIMEType: "application/json",
 		ResponseSchema:   classificationSchema(),
-		ThinkingLevel:    "", // No thinking - fastest classification
+		ThinkingLevel:    "medium", // Medium thinking for better classification quality
 	}
 }
 
