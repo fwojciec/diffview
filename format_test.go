@@ -47,7 +47,7 @@ func TestDefaultFormatter_Format(t *testing.T) {
 	// Check context section
 	assert.Contains(t, result, "<context>")
 	assert.Contains(t, result, "Repository: testrepo")
-	assert.Contains(t, result, "- abc123: Fix authentication token expiry")
+	assert.Contains(t, result, "- Commit 1 [abc123]: Fix authentication token expiry")
 	assert.Contains(t, result, "</context>")
 
 	// Check diff section
@@ -218,8 +218,8 @@ func TestDefaultFormatter_Format_ContextSection(t *testing.T) {
 
 	// Should have commits section with all commits
 	assert.Contains(t, result, "Commits:")
-	assert.Contains(t, result, "- af44c89: Address PR feedback")
-	assert.Contains(t, result, "- 51fad8d: Fix blank lines")
+	assert.Contains(t, result, "- Commit 1 [af44c89]: Address PR feedback")
+	assert.Contains(t, result, "- Commit 2 [51fad8d]: Fix blank lines")
 }
 
 func TestDefaultFormatter_Format_ContextSection_EmptyBranch(t *testing.T) {
@@ -256,7 +256,7 @@ func TestDefaultFormatter_Format_ContextSection_EmptyBranch(t *testing.T) {
 	assert.NotContains(t, result, "Branch:")
 
 	// Should still have commit
-	assert.Contains(t, result, "- abc123: Single commit")
+	assert.Contains(t, result, "- Commit 1 [abc123]: Single commit")
 }
 
 func TestDefaultFormatter_Format_ContextSection_EmptyCommits(t *testing.T) {

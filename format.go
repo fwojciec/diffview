@@ -31,11 +31,24 @@ func (f *DefaultFormatter) Format(input ClassificationInput) string {
 	}
 	if len(input.Commits) > 0 {
 		sb.WriteString("\nCommits:\n")
-		for _, c := range input.Commits {
-			sb.WriteString(fmt.Sprintf("- %s: %s\n", c.Hash, c.Message))
+		for i, c := range input.Commits {
+			sb.WriteString(fmt.Sprintf("- Commit %d [%s]: %s\n", i+1, c.Hash, c.Message))
 		}
 	}
 	sb.WriteString("</context>\n\n")
+
+	// Per-commit diffs section (when available)
+	if hasPerCommitDiffs(input.Commits) {
+		sb.WriteString("<commit-diffs>\n")
+		for i, c := range input.Commits {
+			if c.Diff == nil || len(c.Diff.Files) == 0 {
+				continue
+			}
+			sb.WriteString(fmt.Sprintf("=== COMMIT %d [%s]: %s ===\n\n", i+1, c.Hash, c.Message))
+			formatDiffSummary(&sb, c.Diff)
+		}
+		sb.WriteString("</commit-diffs>\n\n")
+	}
 
 	// Diff section
 	sb.WriteString("<diff>\n")
@@ -100,4 +113,40 @@ func linePrefix(lt LineType) string {
 	default:
 		return " "
 	}
+}
+
+// hasPerCommitDiffs returns true if any commit has a non-empty diff.
+func hasPerCommitDiffs(commits []CommitBrief) bool {
+	for _, c := range commits {
+		if c.Diff != nil && len(c.Diff.Files) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// formatDiffSummary writes a condensed summary of a diff (files and change counts).
+// This provides commit-level context without duplicating the full diff content.
+func formatDiffSummary(sb *strings.Builder, diff *Diff) {
+	for _, file := range diff.Files {
+		adds, dels := countChanges(file)
+		fmt.Fprintf(sb, "  %s (%s): +%d/-%d\n",
+			filePath(file), operationName(file.Operation), adds, dels)
+	}
+	sb.WriteString("\n")
+}
+
+// countChanges counts added and deleted lines in a file diff.
+func countChanges(file FileDiff) (adds, dels int) {
+	for _, hunk := range file.Hunks {
+		for _, line := range hunk.Lines {
+			switch line.Type {
+			case LineAdded:
+				adds++
+			case LineDeleted:
+				dels++
+			}
+		}
+	}
+	return adds, dels
 }
