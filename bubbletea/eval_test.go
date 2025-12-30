@@ -2,6 +2,7 @@ package bubbletea_test
 
 import (
 	"bytes"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -1644,6 +1645,97 @@ func TestEvalModel_SplitResize(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'-'}})
 
 	// Quit and verify app exits normally
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_DataViewScrolling(t *testing.T) {
+	t.Parallel()
+
+	// Data view should support scrolling when content exceeds viewport.
+	// This test creates a case with many sections so the classification tree is tall,
+	// then verifies that scroll keys (G/g) work to navigate the content.
+
+	// Create many sections to ensure content exceeds a small viewport
+	var sections []diffview.Section
+	var hunks []diffview.Hunk
+	for i := 0; i < 20; i++ {
+		sections = append(sections, diffview.Section{
+			Role:        "test",
+			Title:       fmt.Sprintf("Section %d Title", i),
+			Explanation: fmt.Sprintf("Section %d explanation text", i),
+			Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: i}},
+		})
+		hunks = append(hunks, diffview.Hunk{
+			Lines: []diffview.Line{{Type: diffview.LineAdded, Content: fmt.Sprintf("hunk %d content", i)}},
+		})
+	}
+
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks:   hunks,
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Narrative:  "test-narrative",
+				Summary:    "Test with many sections",
+				Sections:   sections,
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	// Use a small terminal to ensure content overflows
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 15),
+	)
+
+	// Wait for initial render in story view
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("[story]"))
+	})
+
+	// Switch to data view
+	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Should show data view with early sections visible
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("[data]")) &&
+			bytes.Contains(out, []byte("Section 0 Title"))
+	})
+
+	// Later sections should NOT be visible yet (viewport is only 15 lines)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return !bytes.Contains(out, []byte("Section 19 Title"))
+	})
+
+	// Press 'G' to go to bottom (GotoBottom) - tests scroll routing works
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+
+	// After scrolling to bottom, Section 19 should become visible
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Section 19 Title"))
+	})
+
+	// Press 'g' to go back to top (GotoTop)
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+
+	// Section 0 should be visible again
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Section 0 Title"))
+	})
+
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
