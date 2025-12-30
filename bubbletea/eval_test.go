@@ -255,7 +255,7 @@ func TestEvalModel_FailJudgment(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestEvalModel_JudgmentUpdatesProgress(t *testing.T) {
+func TestEvalModel_JudgmentUpdatesStatus(t *testing.T) {
 	t.Parallel()
 
 	cases := []diffview.EvalCase{
@@ -268,42 +268,43 @@ func TestEvalModel_JudgmentUpdatesProgress(t *testing.T) {
 		teatest.WithInitialTermSize(80, 40),
 	)
 
-	// Wait for first case
+	// Wait for first case - should show unset judgment
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("0/2 reviewed"))
+		return bytes.Contains(out, []byte("○ unset"))
 	})
 
-	// Judge first case
+	// Judge first case as pass
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("1/2 reviewed"))
+		return bytes.Contains(out, []byte("✓ pass"))
 	})
 
-	// Navigate to second and judge
+	// Navigate to second case - should show unset
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Case B"))
+		return bytes.Contains(out, []byte("Case B")) &&
+			bytes.Contains(out, []byte("○ unset"))
 	})
 
+	// Judge as fail
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("2/2 reviewed"))
+		return bytes.Contains(out, []byte("✗ fail"))
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestEvalModel_StatusBarShowsJudgmentIndicators(t *testing.T) {
+func TestEvalModel_StatusBarShowsCurrentCaseJudgment(t *testing.T) {
 	t.Parallel()
 
 	cases := []diffview.EvalCase{
 		{Input: diffview.ClassificationInput{Repo: "repo", Branch: "case1", Commits: []diffview.CommitBrief{{Hash: "case1"}}}, Story: &diffview.StoryClassification{Summary: "Case 1"}},
 		{Input: diffview.ClassificationInput{Repo: "repo", Branch: "case2", Commits: []diffview.CommitBrief{{Hash: "case2"}}}, Story: &diffview.StoryClassification{Summary: "Case 2"}},
-		{Input: diffview.ClassificationInput{Repo: "repo", Branch: "case3", Commits: []diffview.CommitBrief{{Hash: "case3"}}}, Story: &diffview.StoryClassification{Summary: "Case 3"}},
 	}
 
 	m := bubbletea.NewEvalModel(cases)
@@ -311,36 +312,44 @@ func TestEvalModel_StatusBarShowsJudgmentIndicators(t *testing.T) {
 		teatest.WithInitialTermSize(100, 40),
 	)
 
-	// Initially all unjudged - should show 3 ○ indicators
+	// Initially unjudged
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("○ ○ ○"))
+		return bytes.Contains(out, []byte("case 1/2")) &&
+			bytes.Contains(out, []byte("○ unset"))
 	})
 
-	// Mark first as pass - should show ✓ ○ ○
+	// Mark first as pass
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("✓ ○ ○"))
+		return bytes.Contains(out, []byte("✓ pass"))
 	})
 
-	// Navigate to second and mark as fail - should show ✓ ✗ ○
+	// Navigate to second - should show unset for that case
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("✓ ✗ ○"))
+		return bytes.Contains(out, []byte("case 2/2")) &&
+			bytes.Contains(out, []byte("○ unset"))
+	})
+
+	// Navigate back to first - should still show pass
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("case 1/2")) &&
+			bytes.Contains(out, []byte("✓ pass"))
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestEvalModel_StatusBarShowsCritiqueIndicator(t *testing.T) {
+func TestEvalModel_StatusBarShowsPendingForCritiqueOnly(t *testing.T) {
 	t.Parallel()
 
 	cases := []diffview.EvalCase{
 		{Input: diffview.ClassificationInput{Repo: "repo", Branch: "case1", Commits: []diffview.CommitBrief{{Hash: "case1"}}}, Story: &diffview.StoryClassification{Summary: "Case 1"}},
-		{Input: diffview.ClassificationInput{Repo: "repo", Branch: "case2", Commits: []diffview.CommitBrief{{Hash: "case2"}}}, Story: &diffview.StoryClassification{Summary: "Case 2"}},
 	}
 
 	// Pre-load with a critique-only judgment (has critique but no pass/fail yet)
@@ -353,16 +362,16 @@ func TestEvalModel_StatusBarShowsCritiqueIndicator(t *testing.T) {
 		teatest.WithInitialTermSize(100, 40),
 	)
 
-	// First case has critique without pass/fail - should show ● ○
+	// First case has critique without pass/fail - should show pending
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("● ○"))
+		return bytes.Contains(out, []byte("● pending"))
 	})
 
-	// Mark as pass - should now show ✓ ○
+	// Mark as pass - should now show pass
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("✓ ○"))
+		return bytes.Contains(out, []byte("✓ pass"))
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -1129,72 +1138,6 @@ func TestEvalModel_CaseNavigationResetsStoryModeState(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("section 1/2")) &&
 			bytes.Contains(out, []byte("Case1-S1"))
-	})
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
-func TestEvalModel_SectionProgressIndicator(t *testing.T) {
-	t.Parallel()
-
-	// Create a case with 3 sections
-	cases := []diffview.EvalCase{
-		{
-			Input: diffview.ClassificationInput{
-				Repo:    "test-repo",
-				Branch:  "test-branch",
-				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
-				Diff: diffview.Diff{
-					Files: []diffview.FileDiff{
-						{
-							NewPath: "main.go",
-							Hunks: []diffview.Hunk{
-								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "h1"}}},
-								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "h2"}}},
-								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "h3"}}},
-							},
-						},
-					},
-				},
-			},
-			Story: &diffview.StoryClassification{
-				ChangeType: "feature",
-				Summary:    "Test",
-				Sections: []diffview.Section{
-					{Role: "core", Title: "S1", Hunks: []diffview.HunkRef{{File: "main.go", HunkIndex: 0}}},
-					{Role: "support", Title: "S2", Hunks: []diffview.HunkRef{{File: "main.go", HunkIndex: 1}}},
-					{Role: "noise", Title: "S3", Hunks: []diffview.HunkRef{{File: "main.go", HunkIndex: 2}}},
-				},
-			},
-		},
-	}
-
-	m := bubbletea.NewEvalModel(cases)
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(100, 40),
-	)
-
-	// At section 1, should show progress: current section 1, none reviewed
-	// Expect: ● ○ ○ (current is filled, pending are empty)
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("● ○ ○"))
-	})
-
-	// Navigate to section 2 - section 1 becomes reviewed
-	// Expect: ✓ ● ○ (reviewed is check, current is filled)
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("✓ ● ○"))
-	})
-
-	// Navigate to section 3
-	// Expect: ✓ ✓ ●
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("✓ ✓ ●"))
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
