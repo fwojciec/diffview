@@ -51,13 +51,12 @@ type EvalModel struct {
 	ready    bool
 
 	// Story mode state
-	storyMode        bool               // true = section-by-section navigation, false = raw diff
-	activeSection    int                // current section index (0-based)
-	reviewedSections map[int]bool       // sections marked as reviewed for current case
-	collapsedHunks   map[hunkKey]bool   // hunk collapse state
-	hunkCategories   map[hunkKey]string // hunk → category for styling
-	collapseText     map[hunkKey]string // hunk → collapse text
-	splitRatio       int                // percentage of height for metadata pane (0-100)
+	storyMode      bool               // true = section-by-section navigation, false = raw diff
+	activeSection  int                // current section index (0-based)
+	collapsedHunks map[hunkKey]bool   // hunk collapse state
+	hunkCategories map[hunkKey]string // hunk → category for styling
+	collapseText   map[hunkKey]string // hunk → collapse text
+	splitRatio     int                // percentage of height for metadata pane (0-100)
 
 	// Rendering
 	width, height    int
@@ -136,16 +135,15 @@ func WithClipboard(c diffview.Clipboard) EvalModelOption {
 // NewEvalModel creates a new EvalModel with the given cases.
 func NewEvalModel(cases []diffview.EvalCase, opts ...EvalModelOption) EvalModel {
 	m := EvalModel{
-		cases:            cases,
-		judgments:        make(map[string]*diffview.Judgment),
-		mode:             ModeReview,
-		keymap:           DefaultEvalKeyMap(),
-		styles:           defaultStyles(), // Use same defaults as viewer
-		reviewedSections: make(map[int]bool),
-		collapsedHunks:   make(map[hunkKey]bool),
-		hunkCategories:   make(map[hunkKey]string),
-		collapseText:     make(map[hunkKey]string),
-		splitRatio:       30, // 30% metadata, 70% diff by default
+		cases:          cases,
+		judgments:      make(map[string]*diffview.Judgment),
+		mode:           ModeReview,
+		keymap:         DefaultEvalKeyMap(),
+		styles:         defaultStyles(), // Use same defaults as viewer
+		collapsedHunks: make(map[hunkKey]bool),
+		hunkCategories: make(map[hunkKey]string),
+		collapseText:   make(map[hunkKey]string),
+		splitRatio:     30, // 30% metadata, 70% diff by default
 	}
 
 	for _, opt := range opts {
@@ -573,7 +571,6 @@ func (m *EvalModel) rebuildStoryMaps() {
 	m.collapsedHunks = make(map[hunkKey]bool)
 	m.hunkCategories = make(map[hunkKey]string)
 	m.collapseText = make(map[hunkKey]string)
-	m.reviewedSections = make(map[int]bool)
 	m.activeSection = 0
 
 	if len(m.cases) == 0 {
@@ -656,9 +653,6 @@ func (m *EvalModel) gotoNextSection() {
 		return
 	}
 
-	// Mark current section as reviewed
-	m.reviewedSections[m.activeSection] = true
-
 	// Move to next section if not at end
 	if m.activeSection < len(c.Story.Sections)-1 {
 		m.activeSection++
@@ -726,22 +720,6 @@ func (m *EvalModel) renderSectionHeader(section diffview.Section) string {
 		header += "\n" + section.Explanation
 	}
 	return header
-}
-
-// renderSectionProgress returns a string of indicators showing section review status.
-// ✓ = reviewed, ● = current, ○ = pending
-func (m *EvalModel) renderSectionProgress(sections []diffview.Section) string {
-	var indicators []string
-	for i := range sections {
-		if m.reviewedSections[i] {
-			indicators = append(indicators, "✓")
-		} else if i == m.activeSection {
-			indicators = append(indicators, "●")
-		} else {
-			indicators = append(indicators, "○")
-		}
-	}
-	return strings.Join(indicators, " ")
 }
 
 // filteredDiffWithIndices returns a diff containing only hunks from the active section,
@@ -1137,60 +1115,49 @@ func (m EvalModel) renderStatusBar() string {
 		return "No cases"
 	}
 
-	// Count judged cases and build indicator string
-	judged := 0
-	var indicators []string
-	for _, c := range m.cases {
-		j, ok := m.judgments[c.Input.CaseID()]
-		if !ok {
-			indicators = append(indicators, "○") // unjudged
-		} else if !j.Judged {
-			// Has judgment record but not explicitly passed/failed
-			indicators = append(indicators, "●") // partial-judgment
-		} else {
-			judged++
-			if j.Pass {
-				indicators = append(indicators, "✓") // pass
-			} else {
-				indicators = append(indicators, "✗") // fail
-			}
-		}
-	}
-
-	caseInfo := fmt.Sprintf("case %d/%d", m.currentIndex+1, len(m.cases))
-	progress := fmt.Sprintf("%d/%d reviewed", judged, len(m.cases))
-	indicatorBar := strings.Join(indicators, " ")
-
 	// View mode indicator: [story] or [data]
 	viewIndicator := "[story]"
 	if m.viewMode == ViewData {
 		viewIndicator = "[data]"
 	}
 
-	// Mode and section indicator (for story view)
-	var modeInfo string
-	var sectionProgress string
-	if m.viewMode == ViewStory {
-		if m.storyMode {
-			c := m.cases[m.currentIndex]
-			if c.Story != nil && len(c.Story.Sections) > 0 {
-				modeInfo = fmt.Sprintf("section %d/%d", m.activeSection+1, len(c.Story.Sections))
-				sectionProgress = m.renderSectionProgress(c.Story.Sections)
-			}
+	var parts []string
+	parts = append(parts, viewIndicator)
+
+	// Section info (story view only)
+	if m.viewMode == ViewStory && m.storyMode {
+		c := m.cases[m.currentIndex]
+		if c.Story != nil && len(c.Story.Sections) > 0 {
+			parts = append(parts, fmt.Sprintf("section %d/%d", m.activeSection+1, len(c.Story.Sections)))
 		}
 	}
 
-	help := "[p]ass [f]ail [c]ritique [y]ank n/N case Tab view [?]help [q]uit"
+	// Case position
+	parts = append(parts, fmt.Sprintf("case %d/%d", m.currentIndex+1, len(m.cases)))
 
-	var parts []string
-	parts = append(parts, viewIndicator)
-	if modeInfo != "" {
-		parts = append(parts, modeInfo)
+	// Current case judgment state
+	currentCase := m.cases[m.currentIndex]
+	j, ok := m.judgments[currentCase.Input.CaseID()]
+	var judgmentState string
+	if !ok {
+		judgmentState = "○ unset"
+	} else if !j.Judged {
+		judgmentState = "● pending"
+	} else if j.Pass {
+		judgmentState = "✓ pass"
+	} else {
+		judgmentState = "✗ fail"
 	}
-	if sectionProgress != "" {
-		parts = append(parts, sectionProgress)
+	parts = append(parts, judgmentState)
+
+	// Contextual key hints
+	var hints string
+	if m.viewMode == ViewStory && m.storyMode {
+		hints = "n/N case ]/[ section p/f judge"
+	} else {
+		hints = "n/N case p/f judge"
 	}
-	parts = append(parts, caseInfo, progress, indicatorBar, help)
+	parts = append(parts, hints)
 
 	return strings.Join(parts, " │ ")
 }
