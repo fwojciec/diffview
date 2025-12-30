@@ -984,6 +984,7 @@ func (m EvalModel) renderJudgmentBar() string {
 // RenderDataView formats the classification as a structured tree for data view.
 // It shows change_type, narrative, summary at top, followed by sections with
 // their role, explanation, and hunk references.
+// The width parameter is reserved for future text wrapping of long content.
 func RenderDataView(story *diffview.StoryClassification, width int) string {
 	if story == nil {
 		return "[Not yet classified]"
