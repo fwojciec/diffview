@@ -3,6 +3,7 @@ package main_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -671,13 +672,14 @@ new file mode 100644
 				}
 				return "", errors.New("unknown hash")
 			},
-			// Deprecated methods should not be called
+			// Log is deprecated for PR-level; should not be called
 			LogFn: func(_ context.Context, _ string, _ int) ([]string, error) {
 				t.Error("Log should not be called when merge commits exist")
 				return nil, nil
 			},
-			ShowFn: func(_ context.Context, _ string, _ string) (string, error) {
-				t.Error("Show should not be called for PR-level extraction")
+			// Show is called to get per-commit diffs
+			ShowFn: func(_ context.Context, _ string, hash string) (string, error) {
+				// Return empty diff - per-commit diffs are optional
 				return "", nil
 			},
 		},
@@ -802,4 +804,113 @@ func TestClassifyRunner_Run_ParallelPreservesOrder(t *testing.T) {
 		expectedHash := fmt.Sprintf("commit%d", i)
 		assert.Contains(t, line, fmt.Sprintf(`"hash":"%s"`, expectedHash), "line %d should contain %s", i, expectedHash)
 	}
+}
+
+func TestCollector_Run_PopulatesPerCommitDiffs(t *testing.T) {
+	t.Parallel()
+
+	// Combined PR diff
+	prDiff := `diff --git a/feature.go b/feature.go
+new file mode 100644
+--- /dev/null
++++ b/feature.go
+@@ -0,0 +1,3 @@
++package main
++
++func feature() {}
+`
+	// Per-commit diffs
+	commit1Diff := `diff --git a/feature.go b/feature.go
+new file mode 100644
+--- /dev/null
++++ b/feature.go
+@@ -0,0 +1 @@
++package main
+`
+	commit2Diff := `diff --git a/feature.go b/feature.go
+--- a/feature.go
++++ b/feature.go
+@@ -1 +1,3 @@
+ package main
++
++func feature() {}
+`
+
+	var stdout bytes.Buffer
+	collector := &main.Collector{
+		Output:   &stdout,
+		RepoName: "testrepo",
+		Git: &mock.GitRunner{
+			MergeCommitsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return []string{"merge123"}, nil
+			},
+			CommitsInRangeFn: func(_ context.Context, _ string, base, head string) ([]diffview.CommitBrief, error) {
+				if base == "merge123^1" && head == "merge123^2" {
+					return []diffview.CommitBrief{
+						{Hash: "commit1", Message: "Initial feature"},
+						{Hash: "commit2", Message: "Add function"},
+					}, nil
+				}
+				return nil, errors.New("unexpected range")
+			},
+			DiffRangeFn: func(_ context.Context, _ string, base, head string) (string, error) {
+				if base == "merge123^1" && head == "merge123^2" {
+					return prDiff, nil
+				}
+				return "", errors.New("unexpected range")
+			},
+			MessageFn: func(_ context.Context, _ string, hash string) (string, error) {
+				if hash == "merge123" {
+					return "Merge pull request #42 from user/feature-branch", nil
+				}
+				return "", errors.New("unknown hash")
+			},
+			ShowFn: func(_ context.Context, _ string, hash string) (string, error) {
+				switch hash {
+				case "commit1":
+					return commit1Diff, nil
+				case "commit2":
+					return commit2Diff, nil
+				default:
+					return "", errors.New("unknown commit")
+				}
+			},
+		},
+	}
+
+	err := collector.Run(context.Background())
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.Len(t, lines, 1)
+
+	output := lines[0]
+
+	// Verify commits have per-commit diffs populated
+	// commit1's diff should show new file with just "package main"
+	assert.Contains(t, output, `"hash":"commit1"`)
+	assert.Contains(t, output, `"hash":"commit2"`)
+
+	// The per-commit diffs should be nested within commits
+	// Each commit should have a "diff" field with its own files
+	// commit1 adds feature.go with 1 line, commit2 modifies it adding 2 lines
+	//
+	// We check for the parsed structure - if diff is populated, we'll see
+	// nested diff objects within commits array
+	var evalCase diffview.EvalCase
+	err = json.Unmarshal([]byte(output), &evalCase)
+	require.NoError(t, err, "should parse as valid JSON")
+
+	require.Len(t, evalCase.Input.Commits, 2, "should have 2 commits")
+
+	// Verify commit1 has its per-commit diff populated
+	commit1 := evalCase.Input.Commits[0]
+	require.NotNil(t, commit1.Diff, "commit1 should have Diff populated")
+	require.Len(t, commit1.Diff.Files, 1, "commit1 diff should have 1 file")
+	assert.Equal(t, "feature.go", commit1.Diff.Files[0].NewPath)
+
+	// Verify commit2 has its per-commit diff populated
+	commit2 := evalCase.Input.Commits[1]
+	require.NotNil(t, commit2.Diff, "commit2 should have Diff populated")
+	require.Len(t, commit2.Diff.Files, 1, "commit2 diff should have 1 file")
 }
