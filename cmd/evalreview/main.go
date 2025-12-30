@@ -182,19 +182,25 @@ func (c *Collector) runPRLevel(ctx context.Context, mergeHashes []string) error 
 			return err
 		}
 
-		// Populate per-commit diffs
+		// Populate per-commit diffs concurrently (best-effort; failures are ignored)
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(8) // Limit concurrent git show subprocesses
 		for i := range commits {
-			commitDiffText, err := c.Git.Show(ctx, c.RepoPath, commits[i].Hash)
-			if err != nil {
-				// Per-commit diffs are optional; continue if one fails
-				continue
-			}
-			commitDiff, err := parser.Parse(strings.NewReader(commitDiffText))
-			if err != nil {
-				continue
-			}
-			commits[i].Diff = commitDiff
+			g.Go(func() error {
+				commitDiffText, err := c.Git.Show(gctx, c.RepoPath, commits[i].Hash)
+				if err != nil {
+					// Per-commit diffs are optional; ignore failures
+					return nil
+				}
+				commitDiff, err := parser.Parse(strings.NewReader(commitDiffText))
+				if err != nil {
+					return nil
+				}
+				commits[i].Diff = commitDiff
+				return nil
+			})
 		}
+		_ = g.Wait() // All goroutines return nil, so error is always nil
 
 		// Get combined diff for the PR
 		diffText, err := c.Git.DiffRange(ctx, c.RepoPath, base, head)
