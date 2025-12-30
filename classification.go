@@ -6,6 +6,7 @@ import "context"
 type CommitBrief struct {
 	Hash    string `json:"hash"`
 	Message string `json:"message"`
+	Diff    *Diff  `json:"diff,omitempty"`
 }
 
 // ClassificationInput is the complete input for story classification.
@@ -45,10 +46,11 @@ func (c ClassificationInput) CaseID() string {
 
 // StoryClassification is the LLM's structured output for a diff.
 type StoryClassification struct {
-	ChangeType string    `json:"change_type"` // bugfix, feature, refactor, chore, docs
-	Narrative  string    `json:"narrative"`   // cause-effect, core-periphery, before-after, etc.
-	Summary    string    `json:"summary"`     // One sentence describing the change
-	Sections   []Section `json:"sections"`    // Ordered sections grouping related hunks
+	ChangeType string    `json:"change_type"`         // bugfix, feature, refactor, chore, docs
+	Narrative  string    `json:"narrative"`           // cause-effect, core-periphery, before-after, etc.
+	Summary    string    `json:"summary"`             // One sentence describing the change
+	Sections   []Section `json:"sections"`            // Ordered sections grouping related hunks
+	Evolution  string    `json:"evolution,omitempty"` // How changes evolved across commits
 }
 
 // Section groups related hunks with a narrative role.
