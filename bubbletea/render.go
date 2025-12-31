@@ -374,27 +374,28 @@ func hasSignificantUnchangedContent(segments []diffview.Segment) bool {
 func renderLineWithSegments(prefix string, segments []diffview.Segment, baseStyle, highlightStyle lipgloss.Style, width int) string {
 	var sb strings.Builder
 
-	// Render prefix with base style
-	sb.WriteString(baseStyle.Render(prefix))
+	// Render prefix with base style (expand tabs starting at column 0)
+	expandedPrefix := ExpandTabs(prefix, 0)
+	sb.WriteString(baseStyle.Render(expandedPrefix))
+
+	// Track current column for tab expansion
+	col := DisplayWidth(expandedPrefix)
 
 	// Render each segment with appropriate style
 	for _, seg := range segments {
+		// Expand tabs to spaces before rendering to avoid black background gaps
+		expandedText := ExpandTabs(seg.Text, col)
 		if seg.Changed {
-			sb.WriteString(highlightStyle.Render(seg.Text))
+			sb.WriteString(highlightStyle.Render(expandedText))
 		} else {
-			sb.WriteString(baseStyle.Render(seg.Text))
+			sb.WriteString(baseStyle.Render(expandedText))
 		}
+		col += DisplayWidth(expandedText)
 	}
 
-	// Calculate current length and pad if needed
-	// Use tab-aware width calculation since lipgloss.Width returns 0 for tabs
-	currentLen := displayWidthFrom(prefix, 0)
-	for _, seg := range segments {
-		currentLen = displayWidthFrom(seg.Text, currentLen)
-	}
-
-	if currentLen < width {
-		padding := strings.Repeat(" ", width-currentLen)
+	// Pad if needed (col already tracks current width after tab expansion)
+	if col < width {
+		padding := strings.Repeat(" ", width-col)
 		sb.WriteString(baseStyle.Render(padding))
 	}
 
@@ -423,8 +424,12 @@ func renderLineWithTokens(prefix string, tokens []diffview.Token, colors diffvie
 		baseStyle = baseStyle.Background(lipgloss.Color(colors.Background))
 	}
 
-	// Render prefix with base style
-	sb.WriteString(baseStyle.Render(prefix))
+	// Render prefix with base style (expand tabs starting at column 0)
+	expandedPrefix := ExpandTabs(prefix, 0)
+	sb.WriteString(baseStyle.Render(expandedPrefix))
+
+	// Track current column for tab expansion
+	col := DisplayWidth(expandedPrefix)
 
 	// Render each token with syntax foreground + diff background
 	for _, tok := range tokens {
@@ -448,18 +453,15 @@ func renderLineWithTokens(prefix string, tokens []diffview.Token, colors diffvie
 			style = style.Bold(true)
 		}
 
-		sb.WriteString(style.Render(tok.Text))
+		// Expand tabs to spaces before rendering to avoid black background gaps
+		expandedText := ExpandTabs(tok.Text, col)
+		sb.WriteString(style.Render(expandedText))
+		col += DisplayWidth(expandedText)
 	}
 
-	// Calculate current length and pad if needed
-	// Use tab-aware width calculation since lipgloss.Width returns 0 for tabs
-	currentLen := displayWidthFrom(prefix, 0)
-	for _, tok := range tokens {
-		currentLen = displayWidthFrom(tok.Text, currentLen)
-	}
-
-	if currentLen < width {
-		padding := strings.Repeat(" ", width-currentLen)
+	// Pad if needed (col already tracks current width after tab expansion)
+	if col < width {
+		padding := strings.Repeat(" ", width-col)
 		sb.WriteString(baseStyle.Render(padding))
 	}
 
