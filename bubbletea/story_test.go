@@ -1221,38 +1221,59 @@ func TestStoryModel_IntroSlide_ShowsChangeTypePrefix(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestStoryModel_IntroSlide_ShowsNarrativeExplanation(t *testing.T) {
+func TestStoryModel_IntroSlide_ShowsNarrativeDiagram(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name      string
 		narrative string
-		expected  string
+		sections  []diffview.Section
+		expected  []string // all must be present
 	}{
 		{
-			name:      "cause-effect narrative",
+			name:      "cause-effect shows role diagram",
 			narrative: "cause-effect",
-			expected:  "problem → fix → proof",
+			sections: []diffview.Section{
+				{Role: "problem", Title: "The Bug", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
+				{Role: "fix", Title: "The Fix", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
+				{Role: "test", Title: "Tests", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
+			},
+			expected: []string{"problem", "fix", "test", "→"},
 		},
 		{
-			name:      "core-periphery narrative",
+			name:      "core-periphery shows text explanation",
 			narrative: "core-periphery",
-			expected:  "core change → ripple effects",
+			sections: []diffview.Section{
+				{Role: "core", Title: "Core", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
+			},
+			expected: []string{"core change → ripple effects"},
 		},
 		{
-			name:      "before-after narrative",
+			name:      "before-after shows role diagram",
 			narrative: "before-after",
-			expected:  "old pattern → new pattern",
+			sections: []diffview.Section{
+				{Role: "cleanup", Title: "Remove old", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
+				{Role: "core", Title: "Add new", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
+			},
+			expected: []string{"cleanup", "core", "→"},
 		},
 		{
-			name:      "entry-implementation narrative",
+			name:      "entry-implementation shows role diagram",
 			narrative: "entry-implementation",
-			expected:  "contract → implementation",
+			sections: []diffview.Section{
+				{Role: "entry", Title: "API", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
+				{Role: "implementation", Title: "Impl", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
+			},
+			expected: []string{"entry", "implementation", "→"},
 		},
 		{
-			name:      "rule-instances narrative",
+			name:      "rule-instances shows role diagram",
 			narrative: "rule-instances",
-			expected:  "pattern → applications",
+			sections: []diffview.Section{
+				{Role: "pattern", Title: "The Pattern", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
+				{Role: "instance", Title: "Application", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
+			},
+			expected: []string{"pattern", "instance", "→"},
 		},
 	}
 
@@ -1281,15 +1302,7 @@ func TestStoryModel_IntroSlide_ShowsNarrativeExplanation(t *testing.T) {
 				ChangeType: "feature",
 				Narrative:  tt.narrative,
 				Summary:    "Test summary",
-				Sections: []diffview.Section{
-					{
-						Role:  "core",
-						Title: "Core Changes",
-						Hunks: []diffview.HunkRef{
-							{File: "file.go", HunkIndex: 0, Category: "core"},
-						},
-					},
-				},
+				Sections:   tt.sections,
 			}
 
 			m := bubbletea.NewStoryModel(diff, story, bubbletea.WithIntroSlide())
@@ -1297,9 +1310,14 @@ func TestStoryModel_IntroSlide_ShowsNarrativeExplanation(t *testing.T) {
 				teatest.WithInitialTermSize(80, 24),
 			)
 
-			// Should show narrative explanation
+			// Should show narrative diagram or explanation
 			teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-				return bytes.Contains(out, []byte(tt.expected))
+				for _, exp := range tt.expected {
+					if !bytes.Contains(out, []byte(exp)) {
+						return false
+					}
+				}
+				return true
 			})
 
 			tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})

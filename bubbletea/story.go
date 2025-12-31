@@ -336,9 +336,14 @@ func (m StoryModel) renderIntro() string {
 		b.WriteString("\n")
 	}
 
-	// Narrative explanation
-	if m.story != nil && m.story.Narrative != "" {
-		if explanation := narrativeExplanation(m.story.Narrative); explanation != "" {
+	// Narrative diagram
+	if m.story != nil && m.story.Narrative != "" && hasSections {
+		if diagram := NarrativeDiagram(m.story.Narrative, m.story.Sections, m.renderer); diagram != "" {
+			b.WriteString("\n")
+			b.WriteString(diagram)
+			b.WriteString("\n")
+		} else if explanation := narrativeExplanation(m.story.Narrative); explanation != "" {
+			// Fallback to text explanation if diagram not available
 			fmt.Fprintf(&b, "\nStory: %s\n", explanation)
 		}
 	}
