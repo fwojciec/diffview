@@ -110,14 +110,14 @@ func splitTokensByLine(tokens []diffview.Token) [][]diffview.Token {
 	var currentLine []diffview.Token
 
 	for _, tok := range tokens {
-		// Check if this token contains newlines
-		if !containsNewline(tok.Text) {
+		// Token without newlines goes directly to current line
+		if !strings.Contains(tok.Text, "\n") {
 			currentLine = append(currentLine, tok)
 			continue
 		}
 
 		// Split the token at newline boundaries
-		parts := splitAtNewlines(tok.Text)
+		parts := strings.Split(tok.Text, "\n")
 		for i, part := range parts {
 			if part != "" {
 				currentLine = append(currentLine, diffview.Token{
@@ -139,17 +139,4 @@ func splitTokensByLine(tokens []diffview.Token) [][]diffview.Token {
 	}
 
 	return result
-}
-
-// containsNewline returns true if s contains a newline character.
-func containsNewline(s string) bool {
-	return strings.Contains(s, "\n")
-}
-
-// splitAtNewlines splits a string at newline boundaries, keeping the parts.
-// For "a\nb\nc", returns ["a", "b", "c"].
-// For "a\n", returns ["a", ""].
-// For "\na", returns ["", "a"].
-func splitAtNewlines(s string) []string {
-	return strings.Split(s, "\n")
 }
