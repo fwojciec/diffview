@@ -54,14 +54,15 @@ func linearFlowDiagram(sections []diffview.Section, renderer *lipgloss.Renderer)
 	return lipgloss.JoinHorizontal(lipgloss.Center, parts...)
 }
 
-// hubAndSpokeDiagram renders a hub-and-spoke diagram with core on the right.
-// Peripheral roles are shown on the left, connected to the core box.
+// hubAndSpokeDiagram renders a hub-and-spoke diagram with core on the left.
+// Peripheral roles are shown on the right, connected to the core box.
+// This matches section order where core is typically first.
 //
 // Example output (with rounded borders):
 //
-//	supporting ── ╭──────╮
-//	     test ──  │ core │
-//	  cleanup ──  ╰──────╯
+//	╭──────╮── test
+//	│ core │── supporting
+//	╰──────╯── cleanup
 func hubAndSpokeDiagram(sections []diffview.Section, renderer *lipgloss.Renderer) string {
 	roles := extractRoles(sections)
 	if len(roles) == 0 {
@@ -97,17 +98,17 @@ func hubAndSpokeDiagram(sections []diffview.Section, renderer *lipgloss.Renderer
 	}
 
 	// Build spoke connector
-	spoke := " ── "
+	spoke := "── "
 
-	// Build peripheral roles column (left side)
-	leftParts := make([]string, 0, len(peripheralRoles))
+	// Build peripheral roles column (right side)
+	rightParts := make([]string, 0, len(peripheralRoles))
 	for _, role := range peripheralRoles {
-		leftParts = append(leftParts, role+spoke)
+		rightParts = append(rightParts, spoke+role)
 	}
-	leftColumn := lipgloss.JoinVertical(lipgloss.Right, leftParts...)
+	rightColumn := lipgloss.JoinVertical(lipgloss.Left, rightParts...)
 
-	// Join left spokes with core
-	return lipgloss.JoinHorizontal(lipgloss.Center, leftColumn, coreNode)
+	// Join core with right spokes
+	return lipgloss.JoinHorizontal(lipgloss.Center, coreNode, rightColumn)
 }
 
 // extractRoles returns unique roles from sections in order.

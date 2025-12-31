@@ -233,3 +233,27 @@ func TestNarrativeDiagram_NilRenderer(t *testing.T) {
 	// Should use default renderer when nil is passed
 	assert.Contains(t, diagram, "fix")
 }
+
+func TestNarrativeDiagram_CorePeriphery_CoreAppearsFirst(t *testing.T) {
+	t.Parallel()
+
+	// Core is section 1, so it should appear on the LEFT (first in reading order)
+	// to match the section sequence: 1. core, 2. test, 3. supporting
+	sections := []diffview.Section{
+		{Role: "core", Title: "Main Change"},
+		{Role: "test", Title: "Verification"},
+		{Role: "supporting", Title: "Ripple Effect"},
+	}
+
+	renderer := lipgloss.NewRenderer(nil, termenv.WithProfile(termenv.Ascii))
+	diagram := bubbletea.NarrativeDiagram("core-periphery", sections, renderer)
+
+	// Core should appear before peripheral roles in the string
+	// (i.e., core is on the left side of the diagram)
+	corePos := strings.Index(diagram, "core")
+	testPos := strings.Index(diagram, "test")
+	supportingPos := strings.Index(diagram, "supporting")
+
+	assert.Less(t, corePos, testPos, "core should appear before test in diagram")
+	assert.Less(t, corePos, supportingPos, "core should appear before supporting in diagram")
+}
